@@ -1,0 +1,44 @@
+Analyze the streaming video market competition between Netflix, Disney+, and Amazon Prime Video.
+
+Research and provide for each platform:
+1. Current subscriber count (most recent data available)
+2. Monthly/annual subscription pricing tiers
+3. Notable original content investments and hit shows
+4. Recent strategic moves or pivots (ad-supported tiers, password sharing policies)
+5. Market share and growth trends
+
+Then provide:
+6. Comparative analysis of content strategy and competitive positioning
+7. Industry predictions for the "streaming wars" outcome
+
+FORMAT YOUR RESPONSE AS:
+```
+## Netflix
+- Subscribers: [count and date]
+- Pricing: [tiers and costs]
+- Key Originals: [notable shows/films]
+- Recent Strategy: [password crackdown, ads, etc.]
+- Growth Trend: [growing/declining, percentage]
+
+## Disney+
+- Subscribers: [count and date]
+- Pricing: [tiers and costs]
+- Key Originals: [notable shows/films]
+- Recent Strategy: [bundling, content moves]
+- Growth Trend: [growing/declining, percentage]
+
+## Amazon Prime Video
+- Subscribers: [count and date]
+- Pricing: [included with Prime, standalone options]
+- Key Originals: [notable shows/films]
+- Recent Strategy: [sports rights, MGM acquisition effects]
+- Growth Trend: [growing/declining, percentage]
+
+## Competitive Analysis
+[3-4 sentences comparing strategies and market positions]
+
+## Industry Outlook
+[2-3 sentences on streaming market future predictions]
+```
+
+Use the most recent data available from web searches. Note dates for subscriber counts.

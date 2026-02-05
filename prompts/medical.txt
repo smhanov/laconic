@@ -1,0 +1,44 @@
+Compare the three leading GLP-1 receptor agonist medications for Type 2 diabetes and weight loss: Ozempic (semaglutide), Mounjaro (tirzepatide), and Wegovy.
+
+For each medication, research and provide:
+1. The active ingredient and mechanism of action
+2. FDA approval dates for diabetes and/or weight loss indications
+3. Typical dosing schedule
+4. Average weight loss percentage reported in clinical trials
+5. Common side effects
+
+Then provide:
+6. A comparative analysis of efficacy and safety profiles
+7. Current availability challenges or shortages if any
+
+FORMAT YOUR RESPONSE AS:
+```
+## Ozempic (semaglutide)
+- Mechanism: [description]
+- FDA Approvals: [dates and indications]
+- Dosing: [schedule]
+- Weight Loss: [clinical trial results]
+- Side Effects: [list]
+
+## Mounjaro (tirzepatide)
+- Mechanism: [description]
+- FDA Approvals: [dates and indications]
+- Dosing: [schedule]
+- Weight Loss: [clinical trial results]
+- Side Effects: [list]
+
+## Wegovy
+- Mechanism: [description]
+- FDA Approvals: [dates and indications]
+- Dosing: [schedule]
+- Weight Loss: [clinical trial results]
+- Side Effects: [list]
+
+## Comparative Analysis
+[2-3 sentences comparing efficacy and safety]
+
+## Availability Status
+[Current shortage or supply information]
+```
+
+All information must be grounded in web search results.

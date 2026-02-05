@@ -1,0 +1,51 @@
+Compare the current lunar exploration programs of NASA (Artemis), China (CNSA), and SpaceX.
+
+Research and provide for each program:
+1. Program name and primary objectives
+2. Key missions completed and upcoming mission dates
+3. Spacecraft and launch vehicles being used
+4. International partnerships involved
+5. Budget/investment levels (if available)
+
+Then provide:
+6. Timeline comparison for crewed lunar landing goals
+7. How these programs might cooperate or compete
+
+FORMAT YOUR RESPONSE AS:
+```
+## NASA Artemis Program
+- Objectives: [goals]
+- Completed Missions: [list with dates]
+- Upcoming Missions: [Artemis II, III dates]
+- Spacecraft: [SLS, Orion, Starship HLS]
+- Partners: [ESA, JAXA, CSA, etc.]
+- Budget: [approximate figures]
+
+## China CNSA Lunar Program
+- Objectives: [goals]
+- Completed Missions: [Chang'e series]
+- Upcoming Missions: [planned landings]
+- Spacecraft: [Long March, landers]
+- Partners: [international collaborations]
+- Budget: [if available]
+
+## SpaceX Lunar Plans
+- Objectives: [Starship lunar goals]
+- Completed Milestones: [relevant tests]
+- Upcoming Missions: [HLS contract, private missions]
+- Spacecraft: [Starship specifications]
+- Partners: [NASA HLS, dearMoon, etc.]
+- Investment: [if available]
+
+## Timeline Comparison
+| Program | Crewed Landing Target |
+|---------|----------------------|
+| Artemis | [date] |
+| CNSA    | [date] |
+| SpaceX  | [date] |
+
+## Cooperation vs Competition
+[3-4 sentences on geopolitical dynamics and potential collaboration]
+```
+
+Ground all facts in recent web search results. Note any delays or schedule changes.

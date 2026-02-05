@@ -1,0 +1,43 @@
+Analyze the key events and figures that led to the fall of the Berlin Wall in 1989.
+
+Research and provide information on:
+1. The political situation in East Germany leading up to November 1989
+2. Key protests and demonstrations (Leipzig Monday demonstrations)
+3. The role of Mikhail Gorbachev and Soviet policy changes
+4. Günter Schabowski's famous press conference and the miscommunication
+5. The actual events of November 9, 1989
+
+Then provide:
+6. The immediate aftermath and German reunification timeline
+7. Long-term impact on European geopolitics
+
+FORMAT YOUR RESPONSE AS:
+```
+## Political Context
+[2-3 sentences on East German situation pre-1989]
+
+## Key Protests
+- Leipzig Monday Demonstrations: [description and dates]
+- Other significant protests: [brief mentions]
+
+## Soviet Influence
+- Gorbachev's policies: [glasnost, perestroika effects]
+- Soviet stance on intervention: [key decisions]
+
+## The Press Conference
+- Date: [when]
+- What happened: [Schabowski's statement]
+- The miscommunication: [what went wrong]
+
+## November 9, 1989
+[Description of actual events at the wall]
+
+## Aftermath
+- Immediate effects: [first weeks/months]
+- Reunification: [key dates and milestones]
+
+## Long-term Impact
+[2-3 sentences on European/global effects]
+```
+
+Ground all facts in web search results. Use primary sources where possible.

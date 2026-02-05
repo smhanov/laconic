@@ -1,0 +1,50 @@
+Research the current state of global coral reef decline and conservation efforts.
+
+Investigate and provide:
+1. Current statistics on global coral reef loss (percentage decline, affected regions)
+2. Primary causes of coral bleaching and death
+3. The Great Barrier Reef's current status and recent bleaching events
+4. Major conservation initiatives and their effectiveness
+5. Coral restoration technologies and breakthroughs
+
+Then provide:
+6. Projections for coral reef survival under different climate scenarios
+7. What individuals and governments can do to help
+
+FORMAT YOUR RESPONSE AS:
+```
+## Current State of Coral Reefs
+- Global decline statistics: [percentages and timeframes]
+- Most affected regions: [list]
+- Species at risk: [key species]
+
+## Causes of Decline
+1. [Primary cause with explanation]
+2. [Secondary cause]
+3. [Additional factors]
+
+## Great Barrier Reef Status
+- Recent bleaching events: [dates and severity]
+- Current health assessment: [latest reports]
+- Recovery efforts: [what's being done]
+
+## Conservation Initiatives
+1. [Major initiative - organization, scope, results]
+2. [Second initiative]
+3. [Third initiative]
+
+## Restoration Technologies
+- Coral gardening: [description]
+- Heat-resistant coral breeding: [status]
+- Other innovations: [brief mentions]
+
+## Future Projections
+- 1.5°C scenario: [outcome]
+- 2°C+ scenario: [outcome]
+
+## Action Items
+- Individual actions: [list]
+- Government policies needed: [list]
+```
+
+All facts must be sourced from web searches. Include recent data from 2023-2024 where available.
