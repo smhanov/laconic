@@ -33,3 +33,8 @@ func WithMaxIterations(n int) Option {
 		}
 	}
 }
+
+// WithDebug enables debug logging of all LLM prompts and responses.
+func WithDebug(enabled bool) Option {
+	return func(a *Agent) { a.debug = enabled }
+}

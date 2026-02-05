@@ -14,6 +14,7 @@ type Agent struct {
 	synthesizer   LLMProvider
 	finalizer     LLMProvider
 	maxIterations int
+	debug         bool
 }
 
 // New constructs an Agent with optional configuration.
@@ -101,9 +102,16 @@ func (a *Agent) Answer(ctx context.Context, question string) (string, error) {
 func (a *Agent) plan(ctx context.Context, pad Scratchpad) (PlannerDecision, error) {
 	sys := plannerSystemPrompt
 	user := buildPlannerUserPrompt(pad)
+	if a.debug {
+		fmt.Printf("[LACONIC DEBUG] Planner System Prompt:\n%s\n", sys)
+		fmt.Printf("[LACONIC DEBUG] Planner User Prompt:\n%s\n", user)
+	}
 	raw, err := a.planner.Generate(ctx, sys, user)
 	if err != nil {
 		return PlannerDecision{}, err
+	}
+	if a.debug {
+		fmt.Printf("[LACONIC DEBUG] Planner Response:\n%s\n", raw)
 	}
 	// Strip <think> blocks from models like qwen3
 	raw = StripThinkBlocks(raw)
@@ -113,9 +121,16 @@ func (a *Agent) plan(ctx context.Context, pad Scratchpad) (PlannerDecision, erro
 func (a *Agent) synthesize(ctx context.Context, pad *Scratchpad, query string, results []SearchResult) error {
 	sys := synthesizerSystemPrompt
 	user := buildSynthesizerUserPrompt(*pad, query, results)
+	if a.debug {
+		fmt.Printf("[LACONIC DEBUG] Synthesizer System Prompt:\n%s\n", sys)
+		fmt.Printf("[LACONIC DEBUG] Synthesizer User Prompt:\n%s\n", user)
+	}
 	raw, err := a.synthesizer.Generate(ctx, sys, user)
 	if err != nil {
 		return err
+	}
+	if a.debug {
+		fmt.Printf("[LACONIC DEBUG] Synthesizer Response:\n%s\n", raw)
 	}
 	// Strip <think> blocks from models like qwen3
 	pad.Knowledge = StripThinkBlocks(raw)
@@ -129,9 +144,16 @@ func (a *Agent) finalize(ctx context.Context, pad Scratchpad) (string, error) {
 	}
 	sys := finalizerSystemPrompt
 	user := buildFinalizerUserPrompt(pad)
+	if a.debug {
+		fmt.Printf("[LACONIC DEBUG] Finalizer System Prompt:\n%s\n", sys)
+		fmt.Printf("[LACONIC DEBUG] Finalizer User Prompt:\n%s\n", user)
+	}
 	out, err := a.finalizer.Generate(ctx, sys, user)
 	if err != nil {
 		return "", err
+	}
+	if a.debug {
+		fmt.Printf("[LACONIC DEBUG] Finalizer Response:\n%s\n", out)
 	}
 	// Strip <think> blocks from models like qwen3
 	return StripThinkBlocks(out), nil
