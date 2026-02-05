@@ -1,0 +1,1 @@
+Find two space missions that launched since 2018 with different destinations. For each mission, list the launch date, destination, and primary science goal, then compare the missions.

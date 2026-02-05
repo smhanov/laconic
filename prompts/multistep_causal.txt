@@ -1,0 +1,1 @@
+What programming language was used to build the original Linux kernel, who created that language, and at which institution was that language first developed? Trace the chain from Linux back to the institution.

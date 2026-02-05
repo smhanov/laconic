@@ -7,7 +7,8 @@
 //
 // # Architecture
 //
-// The agent operates in a Planner → Search → Synthesizer → Finalizer loop:
+// The agent operates in a Planner → Search → Synthesizer → Finalizer loop
+// for the default scratchpad strategy:
 //
 //  1. The Planner examines the scratchpad and decides whether to answer or search.
 //  2. If searching, the SearchProvider executes the query.
@@ -39,5 +40,7 @@
 //	    Search(ctx context.Context, query string) ([]SearchResult, error)
 //	}
 //
+// Strategy options include the default scratchpad loop and the graph-based
+// "graph-reader" strategy.
 // See the examples/ollama directory for a complete CLI example using Ollama.
 package laconic

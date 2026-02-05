@@ -9,17 +9,29 @@ import (
 
 // Agent coordinates the planner, searcher, synthesizer, and finalizer.
 type Agent struct {
-	searcher      SearchProvider
-	planner       LLMProvider
-	synthesizer   LLMProvider
-	finalizer     LLMProvider
-	maxIterations int
-	debug         bool
+	searcher          SearchProvider
+	fetcher           FetchProvider
+	planner           LLMProvider
+	synthesizer       LLMProvider
+	finalizer         LLMProvider
+	maxIterations     int
+	debug             bool
+	strategy          Strategy
+	strategyName      string
+	strategyFactories map[string]StrategyFactory
+	graphReaderConfig GraphReaderConfig
 }
 
 // New constructs an Agent with optional configuration.
 func New(opts ...Option) *Agent {
-	a := &Agent{maxIterations: defaultMaxIterations}
+	a := &Agent{
+		maxIterations: defaultMaxIterations,
+		strategyName:  "scratchpad",
+		strategyFactories: map[string]StrategyFactory{
+			"scratchpad":   newScratchpadStrategy,
+			"graph-reader": newGraphReaderStrategy,
+		},
+	}
 	for _, opt := range opts {
 		opt(a)
 	}
@@ -31,72 +43,31 @@ func New(opts ...Option) *Agent {
 
 // Answer runs the loop until an answer is produced or the limit is reached.
 func (a *Agent) Answer(ctx context.Context, question string) (string, error) {
-	question = strings.TrimSpace(question)
-	if question == "" {
-		return "", errors.New("question is empty")
-	}
-	if a.planner == nil {
-		return "", errors.New("planner model is not configured")
-	}
-	if a.synthesizer == nil {
-		return "", errors.New("synthesizer model is not configured")
-	}
-
-	pad := NewScratchpad(question)
-
-	for i := 0; i < a.maxIterations; i++ {
-		pad.IterationCount = i + 1
-
-		decision, err := a.plan(ctx, pad)
-		if err != nil {
-			return "", fmt.Errorf("planner: %w", err)
-		}
-
-		switch decision.Action {
-		case PlannerActionAnswer:
-			// Enforce grounding: must have searched at least once before answering
-			if strings.TrimSpace(pad.Knowledge) == "" {
-				// Force a search if no knowledge has been gathered yet
-				if a.searcher == nil {
-					return "", errors.New("cannot answer without search: no search provider configured")
-				}
-				// Use the question as the search query
-				results, err := a.searcher.Search(ctx, question)
-				if err != nil {
-					return "", fmt.Errorf("search: %w", err)
-				}
-				pad.AppendHistory(fmt.Sprintf("search[%d]: %s (forced)", pad.IterationCount, question))
-				err = a.synthesize(ctx, &pad, question, results)
-				if err != nil {
-					return "", fmt.Errorf("synthesizer: %w", err)
-				}
-				continue // Re-evaluate after forced search
-			}
-			return a.finalize(ctx, pad)
-		case PlannerActionSearch:
-			if a.searcher == nil {
-				return "", errors.New("search requested but no search provider configured")
-			}
-			results, err := a.searcher.Search(ctx, decision.Query)
-			if err != nil {
-				return "", fmt.Errorf("search: %w", err)
-			}
-			pad.AppendHistory(fmt.Sprintf("search[%d]: %s", pad.IterationCount, decision.Query))
-			err = a.synthesize(ctx, &pad, decision.Query, results)
-			if err != nil {
-				return "", fmt.Errorf("synthesizer: %w", err)
-			}
-		default:
-			return "", fmt.Errorf("unknown planner action: %s", decision.Action)
-		}
-	}
-
-	// Best-effort finalization even if the planner never said "Answer".
-	final, err := a.finalize(ctx, pad)
+	strategy, err := a.resolveStrategy()
 	if err != nil {
-		return "", fmt.Errorf("max iterations reached without answer: %w", err)
+		return "", err
 	}
-	return final, errors.New("max iterations reached; returning best-effort answer")
+	return strategy.Answer(ctx, question)
+}
+
+func (a *Agent) resolveStrategy() (Strategy, error) {
+	if a.strategy != nil {
+		return a.strategy, nil
+	}
+	name := strings.TrimSpace(a.strategyName)
+	if name == "" {
+		name = "scratchpad"
+	}
+	factory := a.strategyFactories[name]
+	if factory == nil {
+		return nil, fmt.Errorf("unknown strategy: %s", name)
+	}
+	strategy, err := factory(a)
+	if err != nil {
+		return nil, err
+	}
+	a.strategy = strategy
+	return strategy, nil
 }
 
 func (a *Agent) plan(ctx context.Context, pad Scratchpad) (PlannerDecision, error) {

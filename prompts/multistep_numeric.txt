@@ -1,0 +1,1 @@
+Find the population of Tokyo, Japan and the population of São Paulo, Brazil using recent census or estimate data. Then calculate which city is larger and by approximately how much.

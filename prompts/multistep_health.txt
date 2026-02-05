@@ -1,0 +1,1 @@
+Identify two recent clinical trials of a new migraine treatment. For each trial, report the drug name, study phase, primary endpoint, and year of publication, then compare outcomes.

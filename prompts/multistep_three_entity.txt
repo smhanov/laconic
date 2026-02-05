@@ -1,0 +1,1 @@
+Compare the tallest buildings in three different countries: the United States, China, and the United Arab Emirates. For each, find the building name, city, height in meters, and year of completion, then rank them from tallest to shortest.

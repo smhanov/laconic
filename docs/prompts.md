@@ -32,3 +32,7 @@ User includes question, existing knowledge, latest query, and structured results
 System: `You write the final answer using the knowledge state. If information is insufficient, say so clearly.`
 
 User includes the original question and the final knowledge block. If knowledge is empty or weak, the model should reply: `I could not find enough information yet.`
+
+## GraphReader
+
+The `graph-reader` strategy uses JSON-only prompts for planning, atomic fact extraction, neighbor selection, and answer checks. See the templates in `graph/prompts.go` for exact shapes and output schemas.

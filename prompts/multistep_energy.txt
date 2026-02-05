@@ -1,0 +1,1 @@
+Compare two offshore wind projects commissioned after 2020. For each project, find the operator, installed capacity, and the first power/commissioning year. Then summarize differences in scale and location.

@@ -7,7 +7,9 @@ Laconic implements a small, loop-based agent focused on keeping prompts compact.
 - `Agent`: orchestrates the Planner → Search → Synthesizer → Finalizer loop.
 - `Scratchpad`: mutable state with `OriginalQuestion`, `Knowledge`, `History`, `CurrentStep`, `IterationCount`.
 - `SearchProvider`: user-swappable search backend interface.
+- `FetchProvider`: optional URL fetcher for strategies that read full pages.
 - `LLMProvider`: user-supplied model wrapper; no vendor SDKs are pulled in.
+- `Strategy`: pluggable research loop implementations (default: scratchpad, optional: graph-reader).
 
 ## Loop flow
 
@@ -29,3 +31,8 @@ Laconic implements a small, loop-based agent focused on keeping prompts compact.
 - Swap search: implement `SearchProvider` (e.g., corporate wiki, vector DB, custom scraper).
 - Add observability: wrap `LLMProvider.Generate` or `SearchProvider.Search` with your tracing middleware.
 - Add tools: extend planner prompt and decision parser to recognize more actions.
+- Add strategies: register a new `StrategyFactory` and select it via `WithStrategyName`.
+
+## GraphReader strategy
+
+The `graph-reader` strategy implements a graph-based research loop inspired by GraphReader. It maintains a notebook of atomic facts and explores neighbor queries until the notebook is sufficient to answer the question.
