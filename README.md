@@ -59,22 +59,36 @@ cd examples/basic
 go run .
 ```
 
-### Ollama CLI Demo
+### CLI Demo
 
-A fully functional CLI tool is available in `examples/ollama/`. It supports multiple search backends and both strategies.
+A fully functional CLI tool is available in `examples/research/`. It supports both Ollama (native API) and OpenAI-compatible backends, multiple search providers, and both strategies.
 
 ```bash
 # Create a prompt file
 echo "Why is the sky blue?" > question.txt
 
-# Run with your local Ollama instance (default: localhost:11434)
-go run ./examples/ollama/ -model mistral -prompt question.txt
+# Run with your local Ollama instance using the native API (default)
+go run ./examples/research/ -model mistral -prompt question.txt
 
-# Point to a remote endpoint
-go run ./examples/ollama/ -model llama3 -endpoint ollama.example.com -prompt question.txt
+# Point to a remote Ollama endpoint
+go run ./examples/research/ -model llama3 -endpoint ollama.example.com -prompt question.txt
+
+# Use an Ollama server via its OpenAI-compatible endpoint
+go run ./examples/research/ \
+    -backend openai \
+    -endpoint https://ollama.example.com \
+    -model llama3 \
+    -prompt question.txt
+
+# Use the real OpenAI API
+go run ./examples/research/ \
+    -backend openai \
+    -api-key $OPENAI_API_KEY \
+    -model gpt-4o \
+    -prompt question.txt
 
 # Use the graph-reader strategy with Brave search
-go run ./examples/ollama/ \
+go run ./examples/research/ \
     -model llama3 \
     -prompt question.txt \
     -strategy graph-reader \
@@ -83,15 +97,17 @@ go run ./examples/ollama/ \
     -brave-key YOUR_API_KEY
 
 # Enable debug logging to see all LLM prompts and responses
-go run ./examples/ollama/ -model mistral -prompt question.txt -debug
+go run ./examples/research/ -model mistral -prompt question.txt -debug
 ```
 
 **CLI flags:**
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `-model` | *(required)* | Ollama model name |
-| `-endpoint` | `localhost:11434` | Ollama API endpoint (host:port or URL) |
+| `-backend` | `ollama` | LLM backend: `ollama` (native API) or `openai` (chat completions) |
+| `-model` | *(required)* | Model name |
+| `-endpoint` | varies | API endpoint URL (default: `localhost:11434` for ollama, `https://api.openai.com` for openai) |
+| `-api-key` | | API key for authenticated endpoints (e.g. OpenAI) |
 | `-prompt` | *(required)* | Path to a text file containing the question |
 | `-strategy` | `scratchpad` | Strategy: `scratchpad` or `graph-reader` |
 | `-max-iterations` | `5` | Maximum search iterations (scratchpad) |
