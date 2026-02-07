@@ -6,6 +6,16 @@ A tiny Go library for building research agents that stay fast and cheap on small
 
 Most "ReAct" agents keep appending raw traces until the prompt overflows. Laconic instead compresses state at every step — either via a rolling scratchpad or a notebook of atomic facts — making it practical on 4k/8k models and low-cost backends.
 
+## Example output
+
+Here's a multi-step research question answered by **qwen3:4b** (a 4-billion-parameter model) using the scratchpad strategy. The agent autonomously searched, gathered facts across multiple queries, and synthesized this answer:
+
+> **Prompt:** *Who was the lead architect of the Sydney Opera House, what country was he from, why did he resign from the project, and who completed the interior after he left?*
+>
+> **Answer:** The lead architect of the Sydney Opera House was Jorn Utzon, a Danish architect. He resigned in 1966 due to disagreements with the Australian government over design changes that deviated from his original vision. The interior of the Opera House after his departure was completed by Peter Hall, a British architect.
+
+This required chaining facts across multiple searches — architect identity, nationality, resignation reasons, and successor — all compressed into a bounded context window by the scratchpad strategy.
+
 ## Features
 
 - Two built-in research strategies: **Scratchpad** (iterative search loop) and **Graph Reader** (graph-based web exploration).
