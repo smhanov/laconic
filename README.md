@@ -8,13 +8,13 @@ Most "ReAct" agents keep appending raw traces until the prompt overflows. Laconi
 
 ## Example output
 
-Here's a multi-step research question answered by **qwen3:4b** (a 4-billion-parameter model) using the scratchpad strategy. The agent autonomously searched, gathered facts across multiple queries, and synthesized this answer:
+Here's a research question answered by **qwen3:4b** (a 4-billion-parameter model) using the graph-reader strategy. Without research, the model cannot answer this — it responds *"the 2024 Nobel Prize in Chemistry has not been announced."* With the agent, it autonomously searches, extracts atomic facts, and synthesizes this:
 
-> **Prompt:** *Who was the lead architect of the Sydney Opera House, what country was he from, why did he resign from the project, and who completed the interior after he left?*
+> **Prompt:** *Who won the 2024 Nobel Prize in Chemistry, what specific contribution were they recognized for, and what institution or company are they affiliated with?*
 >
-> **Answer:** The lead architect of the Sydney Opera House was Jorn Utzon, a Danish architect. He resigned in 1966 due to disagreements with the Australian government over design changes that deviated from his original vision. The interior of the Opera House after his departure was completed by Peter Hall, a British architect.
+> **Answer:** The 2024 Nobel Prize in Chemistry was awarded to **David Baker (University of Washington, Howard Hughes Medical Institute)**, **Demis Hassabis**, and **John M. Jumper (Google DeepMind)**. David Baker was recognized for computational protein design. Demis Hassabis and John Jumper were awarded for protein structure prediction using AlphaFold2.
 
-This required chaining facts across multiple searches — architect identity, nationality, resignation reasons, and successor — all compressed into a bounded context window by the scratchpad strategy.
+The agent found all three laureates, their exact affiliations, and their distinct contributions — information entirely outside the model's training data — by exploring multiple search queries and accumulating verified facts in a structured notebook.
 
 ## Features
 
