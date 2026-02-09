@@ -20,6 +20,7 @@ type Agent struct {
 	strategyName      string
 	strategyFactories map[string]StrategyFactory
 	graphReaderConfig GraphReaderConfig
+	searchCost        float64
 }
 
 // New constructs an Agent with optional configuration.
@@ -42,10 +43,10 @@ func New(opts ...Option) *Agent {
 }
 
 // Answer runs the loop until an answer is produced or the limit is reached.
-func (a *Agent) Answer(ctx context.Context, question string) (string, error) {
+func (a *Agent) Answer(ctx context.Context, question string) (Result, error) {
 	strategy, err := a.resolveStrategy()
 	if err != nil {
-		return "", err
+		return Result{}, err
 	}
 	return strategy.Answer(ctx, question)
 }
@@ -70,48 +71,49 @@ func (a *Agent) resolveStrategy() (Strategy, error) {
 	return strategy, nil
 }
 
-func (a *Agent) plan(ctx context.Context, pad Scratchpad) (PlannerDecision, error) {
+func (a *Agent) plan(ctx context.Context, pad Scratchpad) (PlannerDecision, float64, error) {
 	sys := plannerSystemPrompt
 	user := buildPlannerUserPrompt(pad)
 	if a.debug {
 		fmt.Printf("[LACONIC DEBUG] Planner System Prompt:\n%s\n", sys)
 		fmt.Printf("[LACONIC DEBUG] Planner User Prompt:\n%s\n", user)
 	}
-	raw, err := a.planner.Generate(ctx, sys, user)
+	resp, err := a.planner.Generate(ctx, sys, user)
 	if err != nil {
-		return PlannerDecision{}, err
+		return PlannerDecision{}, 0, err
 	}
 	if a.debug {
-		fmt.Printf("[LACONIC DEBUG] Planner Response:\n%s\n", raw)
+		fmt.Printf("[LACONIC DEBUG] Planner Response:\n%s\n", resp.Text)
 	}
 	// Strip <think> blocks from models like qwen3
-	raw = StripThinkBlocks(raw)
-	return parsePlannerDecision(raw)
+	raw := StripThinkBlocks(resp.Text)
+	decision, err := parsePlannerDecision(raw)
+	return decision, resp.Cost, err
 }
 
-func (a *Agent) synthesize(ctx context.Context, pad *Scratchpad, query string, results []SearchResult) error {
+func (a *Agent) synthesize(ctx context.Context, pad *Scratchpad, query string, results []SearchResult) (float64, error) {
 	sys := synthesizerSystemPrompt
 	user := buildSynthesizerUserPrompt(*pad, query, results)
 	if a.debug {
 		fmt.Printf("[LACONIC DEBUG] Synthesizer System Prompt:\n%s\n", sys)
 		fmt.Printf("[LACONIC DEBUG] Synthesizer User Prompt:\n%s\n", user)
 	}
-	raw, err := a.synthesizer.Generate(ctx, sys, user)
+	resp, err := a.synthesizer.Generate(ctx, sys, user)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	if a.debug {
-		fmt.Printf("[LACONIC DEBUG] Synthesizer Response:\n%s\n", raw)
+		fmt.Printf("[LACONIC DEBUG] Synthesizer Response:\n%s\n", resp.Text)
 	}
 	// Strip <think> blocks from models like qwen3
-	pad.Knowledge = StripThinkBlocks(raw)
+	pad.Knowledge = StripThinkBlocks(resp.Text)
 	pad.CurrentStep = fmt.Sprintf("Last query: %s", query)
-	return nil
+	return resp.Cost, nil
 }
 
-func (a *Agent) finalize(ctx context.Context, pad Scratchpad) (string, error) {
+func (a *Agent) finalize(ctx context.Context, pad Scratchpad) (string, float64, error) {
 	if a.finalizer == nil {
-		return "", errors.New("finalizer model is not configured")
+		return "", 0, errors.New("finalizer model is not configured")
 	}
 	sys := finalizerSystemPrompt
 	user := buildFinalizerUserPrompt(pad)
@@ -119,13 +121,13 @@ func (a *Agent) finalize(ctx context.Context, pad Scratchpad) (string, error) {
 		fmt.Printf("[LACONIC DEBUG] Finalizer System Prompt:\n%s\n", sys)
 		fmt.Printf("[LACONIC DEBUG] Finalizer User Prompt:\n%s\n", user)
 	}
-	out, err := a.finalizer.Generate(ctx, sys, user)
+	resp, err := a.finalizer.Generate(ctx, sys, user)
 	if err != nil {
-		return "", err
+		return "", 0, err
 	}
 	if a.debug {
-		fmt.Printf("[LACONIC DEBUG] Finalizer Response:\n%s\n", out)
+		fmt.Printf("[LACONIC DEBUG] Finalizer Response:\n%s\n", resp.Text)
 	}
 	// Strip <think> blocks from models like qwen3
-	return StripThinkBlocks(out), nil
+	return StripThinkBlocks(resp.Text), resp.Cost, nil
 }

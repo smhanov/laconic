@@ -8,9 +8,9 @@ Most "ReAct" agents keep appending raw traces until the prompt overflows. Laconi
 
 ## Example output
 
-Here's a research question answered by **qwen3:4b** (a 4-billion-parameter model) using the graph-reader strategy. Without research, the model cannot answer this — it responds *"the 2024 Nobel Prize in Chemistry has not been announced."* With the agent, it autonomously searches, extracts atomic facts, and synthesizes this:
+Here's a research question answered by **qwen3:4b** (a 4-billion-parameter model) using the graph-reader strategy. Without research, the model cannot answer this — it responds _"the 2024 Nobel Prize in Chemistry has not been announced."_ With the agent, it autonomously searches, extracts atomic facts, and synthesizes this:
 
-> **Prompt:** *Who won the 2024 Nobel Prize in Chemistry, what specific contribution were they recognized for, and what institution or company are they affiliated with?*
+> **Prompt:** _Who won the 2024 Nobel Prize in Chemistry, what specific contribution were they recognized for, and what institution or company are they affiliated with?_
 >
 > **Answer:** The 2024 Nobel Prize in Chemistry was awarded to **David Baker (University of Washington, Howard Hughes Medical Institute)**, **Demis Hassabis**, and **John M. Jumper (Google DeepMind)**. David Baker was recognized for computational protein design. Demis Hassabis and John Jumper were awarded for protein structure prediction using AlphaFold2.
 
@@ -19,10 +19,11 @@ The agent found all three laureates, their exact affiliations, and their distinc
 ## Features
 
 - Two built-in research strategies: **Scratchpad** (iterative search loop) and **Graph Reader** (graph-based web exploration).
-- Model-agnostic: bring your own `LLMProvider` adapter (OpenAI, Ollama, Anthropic, etc.).
+- Model-agnostic: bring your own `LLMProvider` adapter (OpenAI, Ollama, Anthropic, etc.). Suggestion: use [llmhub](https://github.com/smhanov/llmhub) to easily integrate with any model.
 - Swappable search providers (DuckDuckGo, Brave, Tavily) + custom `SearchProvider` interface.
 - Optional `FetchProvider` for reading full web pages (used by Graph Reader).
 - Dual-model support: use a stronger planner and a cheaper synthesizer/finalizer to save cost.
+- **Cost tracking**: accumulate LLM and search costs automatically; `Result.Cost` reports total spend.
 - Minimal dependencies (stdlib only, no vendor SDKs).
 - Pluggable strategy system — register your own with `WithStrategyFactory`.
 
@@ -51,14 +52,16 @@ func main() {
         laconic.WithPlannerModel(myLLM),
         laconic.WithSynthesizerModel(myLLM),
         laconic.WithSearchProvider(search.NewDuckDuckGo()),
+        laconic.WithSearchCost(0.005), // optional: cost per search call
         laconic.WithMaxIterations(5),
     )
 
-    ans, err := agent.Answer(context.Background(), "Why is the sky blue?")
+    result, err := agent.Answer(context.Background(), "Why is the sky blue?")
     if err != nil {
         log.Fatal(err)
     }
-    fmt.Println(ans)
+    fmt.Println(result.Answer)
+    fmt.Printf("Total cost: $%.4f\n", result.Cost)
 }
 ```
 
@@ -112,19 +115,19 @@ go run ./examples/research/ -model mistral -prompt question.txt -debug
 
 **CLI flags:**
 
-| Flag | Default | Description |
-|------|---------|-------------|
-| `-backend` | `ollama` | LLM backend: `ollama` (native API) or `openai` (chat completions) |
-| `-model` | *(required)* | Model name |
-| `-endpoint` | varies | API endpoint URL (default: `localhost:11434` for ollama, `https://api.openai.com` for openai) |
-| `-api-key` | | API key for authenticated endpoints (e.g. OpenAI) |
-| `-prompt` | *(required)* | Path to a text file containing the question |
-| `-strategy` | `scratchpad` | Strategy: `scratchpad` or `graph-reader` |
-| `-max-iterations` | `5` | Maximum search iterations (scratchpad) |
-| `-graph-max-steps` | `8` | Maximum exploration steps (graph-reader) |
-| `-search` | `duckduckgo` | Search provider: `duckduckgo` or `brave` |
-| `-brave-key` | | Brave Search API key (required with `-search brave`) |
-| `-debug` | `false` | Print all LLM prompts and responses |
+| Flag               | Default      | Description                                                                                   |
+| ------------------ | ------------ | --------------------------------------------------------------------------------------------- |
+| `-backend`         | `ollama`     | LLM backend: `ollama` (native API) or `openai` (chat completions)                             |
+| `-model`           | _(required)_ | Model name                                                                                    |
+| `-endpoint`        | varies       | API endpoint URL (default: `localhost:11434` for ollama, `https://api.openai.com` for openai) |
+| `-api-key`         |              | API key for authenticated endpoints (e.g. OpenAI)                                             |
+| `-prompt`          | _(required)_ | Path to a text file containing the question                                                   |
+| `-strategy`        | `scratchpad` | Strategy: `scratchpad` or `graph-reader`                                                      |
+| `-max-iterations`  | `5`          | Maximum search iterations (scratchpad)                                                        |
+| `-graph-max-steps` | `8`          | Maximum exploration steps (graph-reader)                                                      |
+| `-search`          | `duckduckgo` | Search provider: `duckduckgo` or `brave`                                                      |
+| `-brave-key`       |              | Brave Search API key (required with `-search brave`)                                          |
+| `-debug`           | `false`      | Print all LLM prompts and responses                                                           |
 
 ## Strategies
 
@@ -176,11 +179,11 @@ The graph-reader strategy implements a **graph-based exploration loop** inspired
 
 **How it works:**
 
-1. The **Planner** LLM creates a *Rational Plan* — a structured breakdown of the question into a multi-step strategy and a list of *key elements* (entities, concepts, names) that need to be resolved.
+1. The **Planner** LLM creates a _Rational Plan_ — a structured breakdown of the question into a multi-step strategy and a list of _key elements_ (entities, concepts, names) that need to be resolved.
 2. From the plan, initial search queries ("nodes") are generated — typically 3–5 targeted queries covering the key elements.
 3. The agent processes nodes from a queue in breadth-first order. For each node:
    - The search provider executes the query.
-   - The **Extractor** LLM reads the search snippets and pulls out *atomic facts* — single, self-contained truths that directly help answer the question. Each fact is tagged with its source URL.
+   - The **Extractor** LLM reads the search snippets and pulls out _atomic facts_ — single, self-contained truths that directly help answer the question. Each fact is tagged with its source URL.
    - If snippets are promising but incomplete, the Extractor can flag URLs for deep reading. If a `FetchProvider` is configured, the agent fetches full page content and extracts additional facts from it.
    - Facts are deduplicated before being added to the notebook (exact matches and substring containment are both caught).
 4. After processing each node, an **Answer Check** LLM evaluates whether the notebook contains enough facts to answer the question. If yes, exploration stops early.
@@ -229,17 +232,17 @@ laconic.WithGraphReaderConfig(laconic.GraphReaderConfig{
 
 ### Strategy comparison
 
-| | Scratchpad | Graph Reader |
-|---|---|---|
-| **State format** | Free-text `Knowledge` summary | Notebook of atomic facts with source URLs |
-| **Exploration** | Linear (one query at a time) | Graph-based (breadth-first with dynamic neighbors) |
-| **Context growth** | Flat (summary is overwritten each step) | Grows with fact count (but stays structured) |
-| **LLM calls per run** | ~2–4 (plan + synthesize + finalize) | ~15–25 (plan + extract × N + check × N + neighbors × N + finalize) |
-| **Deep page reading** | No | Yes (via `FetchProvider`) |
-| **Early termination** | Planner decides when to answer | Answer check evaluates notebook sufficiency |
-| **Best for** | Simple factual questions, tight budgets | Multi-hop reasoning, complex research |
-| **Min context window** | 4k tokens | 16k+ tokens recommended |
-| **Requires FetchProvider** | No | No, but strongly recommended |
+|                            | Scratchpad                              | Graph Reader                                                       |
+| -------------------------- | --------------------------------------- | ------------------------------------------------------------------ |
+| **State format**           | Free-text `Knowledge` summary           | Notebook of atomic facts with source URLs                          |
+| **Exploration**            | Linear (one query at a time)            | Graph-based (breadth-first with dynamic neighbors)                 |
+| **Context growth**         | Flat (summary is overwritten each step) | Grows with fact count (but stays structured)                       |
+| **LLM calls per run**      | ~2–4 (plan + synthesize + finalize)     | ~15–25 (plan + extract × N + check × N + neighbors × N + finalize) |
+| **Deep page reading**      | No                                      | Yes (via `FetchProvider`)                                          |
+| **Early termination**      | Planner decides when to answer          | Answer check evaluates notebook sufficiency                        |
+| **Best for**               | Simple factual questions, tight budgets | Multi-hop reasoning, complex research                              |
+| **Min context window**     | 4k tokens                               | 16k+ tokens recommended                                            |
+| **Requires FetchProvider** | No                                      | No, but strongly recommended                                       |
 
 ### Custom strategies
 
@@ -254,44 +257,56 @@ agent := laconic.New(
 )
 ```
 
-A `Strategy` must implement `Name() string` and `Answer(ctx, question) (string, error)`.
+A `Strategy` must implement `Name() string` and `Answer(ctx, question) (Result, error)`.
 
 ## API surface
 
 ### Interfaces
 
-- `LLMProvider` — your adapter for any language model. Single method: `Generate(ctx, systemPrompt, userPrompt) (string, error)`.
+- `LLMProvider` — your adapter for any language model. Single method: `Generate(ctx, systemPrompt, userPrompt) (LLMResponse, error)`. The `LLMResponse` struct carries both the generated `Text` and a `Cost` (in dollars) for the call.
 - `SearchProvider` — plug any search backend. Single method: `Search(ctx, query) ([]SearchResult, error)`.
 - `FetchProvider` — optional URL fetcher for reading full web pages. Single method: `Fetch(ctx, url) (string, error)`.
-- `Strategy` — pluggable research loop. Methods: `Name() string`, `Answer(ctx, question) (string, error)`.
+- `Strategy` — pluggable research loop. Methods: `Name() string`, `Answer(ctx, question) (Result, error)`.
+
+### Result
+
+`Agent.Answer` returns a `Result` struct:
+
+```go
+type Result struct {
+    Answer string  // the final answer text
+    Cost   float64 // total accumulated cost in dollars
+}
+```
 
 ### Agent
 
-Create with `laconic.New(opts...)`, then call `agent.Answer(ctx, question)`.
+Create with `laconic.New(opts...)`, then call `agent.Answer(ctx, question)` which returns a `Result`.
 
 ### Functional options
 
-| Option | Description |
-|--------|-------------|
-| `WithPlannerModel(m)` | LLM used for routing/planning decisions |
-| `WithSynthesizerModel(m)` | LLM used for compressing search results |
-| `WithFinalizerModel(m)` | LLM used to produce the final answer (defaults to synthesizer) |
-| `WithSearchProvider(s)` | Search backend implementation |
-| `WithFetchProvider(f)` | URL fetcher for full-page reading (optional) |
-| `WithMaxIterations(n)` | Max loop iterations for scratchpad strategy (default: 5) |
-| `WithStrategyName(name)` | Select a strategy by name: `"scratchpad"` or `"graph-reader"` |
-| `WithStrategy(s)` | Inject a custom `Strategy` instance directly |
-| `WithStrategyFactory(name, fn)` | Register a custom strategy factory |
-| `WithGraphReaderConfig(cfg)` | Configure the graph-reader strategy (MaxSteps, per-role LLMs) |
-| `WithDebug(bool)` | Log all LLM prompts and responses to stdout |
+| Option                          | Description                                                    |
+| ------------------------------- | -------------------------------------------------------------- |
+| `WithPlannerModel(m)`           | LLM used for routing/planning decisions                        |
+| `WithSynthesizerModel(m)`       | LLM used for compressing search results                        |
+| `WithFinalizerModel(m)`         | LLM used to produce the final answer (defaults to synthesizer) |
+| `WithSearchProvider(s)`         | Search backend implementation                                  |
+| `WithFetchProvider(f)`          | URL fetcher for full-page reading (optional)                   |
+| `WithMaxIterations(n)`          | Max loop iterations for scratchpad strategy (default: 5)       |
+| `WithStrategyName(name)`        | Select a strategy by name: `"scratchpad"` or `"graph-reader"`  |
+| `WithStrategy(s)`               | Inject a custom `Strategy` instance directly                   |
+| `WithStrategyFactory(name, fn)` | Register a custom strategy factory                             |
+| `WithGraphReaderConfig(cfg)`    | Configure the graph-reader strategy (MaxSteps, per-role LLMs)  |
+| `WithSearchCost(cost)`          | Cost in dollars charged per search call (default: 0)           |
+| `WithDebug(bool)`               | Log all LLM prompts and responses to stdout                    |
 
 ## Search providers
 
-| Provider | API key required | Notes |
-|----------|-----------------|-------|
-| DuckDuckGo | No | Free; scrapes the lite HTML interface |
-| Brave | Yes (`X-Subscription-Token`) | Fast, structured JSON API |
-| Tavily | Yes | Supports `basic` and `advanced` depth modes |
+| Provider   | API key required             | Notes                                       |
+| ---------- | ---------------------------- | ------------------------------------------- |
+| DuckDuckGo | No                           | Free; scrapes the lite HTML interface       |
+| Brave      | Yes (`X-Subscription-Token`) | Fast, structured JSON API                   |
+| Tavily     | Yes                          | Supports `basic` and `advanced` depth modes |
 
 ```go
 search.NewDuckDuckGo()

@@ -52,37 +52,41 @@ func (s *graphReaderStrategy) Name() string {
 	return "graph-reader"
 }
 
-func (s *graphReaderStrategy) Answer(ctx context.Context, question string) (string, error) {
+func (s *graphReaderStrategy) Answer(ctx context.Context, question string) (Result, error) {
 	question = strings.TrimSpace(question)
 	if question == "" {
-		return "", errors.New("question is empty")
+		return Result{}, errors.New("question is empty")
 	}
 	if s.cfg.Planner == nil {
-		return "", errors.New("planner model is not configured")
+		return Result{}, errors.New("planner model is not configured")
 	}
 	if s.cfg.Extractor == nil {
-		return "", errors.New("extractor model is not configured")
+		return Result{}, errors.New("extractor model is not configured")
 	}
 	if s.cfg.Neighbor == nil {
-		return "", errors.New("neighbor model is not configured")
+		return Result{}, errors.New("neighbor model is not configured")
 	}
 	if s.cfg.Finalizer == nil {
-		return "", errors.New("finalizer model is not configured")
+		return Result{}, errors.New("finalizer model is not configured")
 	}
 	if s.agent.searcher == nil {
-		return "", errors.New("search provider is not configured")
+		return Result{}, errors.New("search provider is not configured")
 	}
 
+	var totalCost float64
+
 	state := graph.NewAgentState(question)
-	plan, err := s.generatePlan(ctx, question)
+	plan, cost, err := s.generatePlan(ctx, question)
+	totalCost += cost
 	if err != nil {
-		return "", fmt.Errorf("graph planner: %w", err)
+		return Result{}, fmt.Errorf("graph planner: %w", err)
 	}
 	state.Plan = plan
 
-	initialNodes, err := s.generateInitialNodes(ctx, state.Plan)
+	initialNodes, cost, err := s.generateInitialNodes(ctx, state.Plan)
+	totalCost += cost
 	if err != nil {
-		return "", fmt.Errorf("graph init nodes: %w", err)
+		return Result{}, fmt.Errorf("graph init nodes: %w", err)
 	}
 	for _, node := range initialNodes {
 		state.Queue = append(state.Queue, node)
@@ -101,8 +105,10 @@ func (s *graphReaderStrategy) Answer(ctx context.Context, question string) (stri
 		if err != nil {
 			continue
 		}
+		totalCost += s.agent.searchCost
 
-		extraction, err := s.extractFacts(ctx, state.Plan, current.Name, results)
+		extraction, cost, err := s.extractFacts(ctx, state.Plan, current.Name, results)
+		totalCost += cost
 		if err != nil {
 			if s.agent.debug {
 				fmt.Printf("[LACONIC DEBUG] Fact extraction failed: %v\n", err)
@@ -131,7 +137,8 @@ func (s *graphReaderStrategy) Answer(ctx context.Context, question string) (stri
 					}
 					continue
 				}
-				deepFacts, err := s.extractFactsFromText(ctx, state.Plan, url, content)
+				deepFacts, cost, err := s.extractFactsFromText(ctx, state.Plan, url, content)
+				totalCost += cost
 				if err != nil {
 					continue
 				}
@@ -144,13 +151,15 @@ func (s *graphReaderStrategy) Answer(ctx context.Context, question string) (stri
 				fmt.Println("[LACONIC DEBUG] Notebook still empty, skipping answer check")
 			}
 		} else {
-			canAnswer, err := s.canAnswer(ctx, state)
+			canAnswer, cost, err := s.canAnswer(ctx, state)
+			totalCost += cost
 			if err == nil && canAnswer {
 				break
 			}
 		}
 
-		neighbors, err := s.findNeighbors(ctx, state, current.Name)
+		neighbors, cost, err := s.findNeighbors(ctx, state, current.Name)
+		totalCost += cost
 		if err != nil {
 			continue
 		}
@@ -162,7 +171,12 @@ func (s *graphReaderStrategy) Answer(ctx context.Context, question string) (stri
 		}
 	}
 
-	return s.finalize(ctx, state)
+	answer, cost, err := s.finalize(ctx, state)
+	totalCost += cost
+	if err != nil {
+		return Result{}, err
+	}
+	return Result{Answer: answer, Cost: totalCost}, nil
 }
 
 type planResponse struct {
@@ -179,57 +193,57 @@ type answerCheckResponse struct {
 	CanAnswer bool `json:"can_answer"`
 }
 
-func (s *graphReaderStrategy) generatePlan(ctx context.Context, question string) (graph.RationalPlan, error) {
+func (s *graphReaderStrategy) generatePlan(ctx context.Context, question string) (graph.RationalPlan, float64, error) {
 	user, err := renderTemplate(graph.TmplPlan, map[string]any{"Question": question})
 	if err != nil {
-		return graph.RationalPlan{}, err
+		return graph.RationalPlan{}, 0, err
 	}
 	if s.agent.debug {
 		fmt.Printf("[LACONIC DEBUG] Graph Plan System Prompt:\n%s\n", graphPlannerSystemPrompt)
 		fmt.Printf("[LACONIC DEBUG] Graph Plan User Prompt:\n%s\n", user)
 	}
-	raw, err := s.cfg.Planner.Generate(ctx, graphPlannerSystemPrompt, user)
+	resp, err := s.cfg.Planner.Generate(ctx, graphPlannerSystemPrompt, user)
 	if err != nil {
-		return graph.RationalPlan{}, err
+		return graph.RationalPlan{}, 0, err
 	}
-	raw = StripThinkBlocks(raw)
+	raw := StripThinkBlocks(resp.Text)
 	if s.agent.debug {
 		fmt.Printf("[LACONIC DEBUG] Graph Plan Response:\n%s\n", raw)
 	}
 
-	var resp planResponse
-	if err := json.Unmarshal([]byte(extractJSON(raw)), &resp); err != nil {
-		return graph.RationalPlan{}, fmt.Errorf("plan JSON parse: %w (raw: %.200s)", err, raw)
+	var parsed planResponse
+	if err := json.Unmarshal([]byte(extractJSON(raw)), &parsed); err != nil {
+		return graph.RationalPlan{}, resp.Cost, fmt.Errorf("plan JSON parse: %w (raw: %.200s)", err, raw)
 	}
 
 	return graph.RationalPlan{
 		OriginalQuestion: question,
-		Strategy:         trimStrings(resp.Strategy),
-		KeyElements:      trimStrings(resp.KeyElements),
-	}, nil
+		Strategy:         trimStrings(parsed.Strategy),
+		KeyElements:      trimStrings(parsed.KeyElements),
+	}, resp.Cost, nil
 }
 
-func (s *graphReaderStrategy) generateInitialNodes(ctx context.Context, plan graph.RationalPlan) ([]graph.Node, error) {
+func (s *graphReaderStrategy) generateInitialNodes(ctx context.Context, plan graph.RationalPlan) ([]graph.Node, float64, error) {
 	user, err := renderTemplate(graph.TmplInit, plan)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	if s.agent.debug {
 		fmt.Printf("[LACONIC DEBUG] Graph Init System Prompt:\n%s\n", graphPlannerSystemPrompt)
 		fmt.Printf("[LACONIC DEBUG] Graph Init User Prompt:\n%s\n", user)
 	}
-	raw, err := s.cfg.Planner.Generate(ctx, graphPlannerSystemPrompt, user)
+	resp, err := s.cfg.Planner.Generate(ctx, graphPlannerSystemPrompt, user)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
-	raw = StripThinkBlocks(raw)
+	raw := StripThinkBlocks(resp.Text)
 	if s.agent.debug {
 		fmt.Printf("[LACONIC DEBUG] Graph Init Response:\n%s\n", raw)
 	}
 
 	var queries []string
 	if err := json.Unmarshal([]byte(extractJSON(raw)), &queries); err != nil {
-		return nil, fmt.Errorf("init nodes JSON parse: %w (raw: %.200s)", err, raw)
+		return nil, resp.Cost, fmt.Errorf("init nodes JSON parse: %w (raw: %.200s)", err, raw)
 	}
 	queries = trimStrings(queries)
 
@@ -240,7 +254,7 @@ func (s *graphReaderStrategy) generateInitialNodes(ctx context.Context, plan gra
 		}
 		nodes = append(nodes, graph.Node{Name: q, Rationale: "initial", Depth: 0})
 	}
-	return nodes, nil
+	return nodes, resp.Cost, nil
 }
 
 // extractJSON attempts to extract a JSON object or array from an LLM response
@@ -282,7 +296,7 @@ func extractJSON(raw string) string {
 	return raw[start:end]
 }
 
-func (s *graphReaderStrategy) extractFacts(ctx context.Context, plan graph.RationalPlan, currentNode string, results []SearchResult) (extractResponse, error) {
+func (s *graphReaderStrategy) extractFacts(ctx context.Context, plan graph.RationalPlan, currentNode string, results []SearchResult) (extractResponse, float64, error) {
 	snippets := make([]map[string]string, 0, len(results))
 	for _, r := range results {
 		content := strings.TrimSpace(r.Snippet)
@@ -300,86 +314,86 @@ func (s *graphReaderStrategy) extractFacts(ctx context.Context, plan graph.Ratio
 		"Snippets":    snippets,
 	})
 	if err != nil {
-		return extractResponse{}, err
+		return extractResponse{}, 0, err
 	}
 	if s.agent.debug {
 		fmt.Printf("[LACONIC DEBUG] Graph Extract System Prompt:\n%s\n", graphExtractorSystemPrompt)
 		fmt.Printf("[LACONIC DEBUG] Graph Extract User Prompt:\n%s\n", user)
 	}
-	raw, err := s.cfg.Extractor.Generate(ctx, graphExtractorSystemPrompt, user)
+	resp, err := s.cfg.Extractor.Generate(ctx, graphExtractorSystemPrompt, user)
 	if err != nil {
-		return extractResponse{}, err
+		return extractResponse{}, 0, err
 	}
-	raw = StripThinkBlocks(raw)
+	raw := StripThinkBlocks(resp.Text)
 	if s.agent.debug {
 		fmt.Printf("[LACONIC DEBUG] Graph Extract Response:\n%s\n", raw)
 	}
 
-	var resp extractResponse
-	if err := json.Unmarshal([]byte(extractJSON(raw)), &resp); err != nil {
-		return extractResponse{}, fmt.Errorf("extract JSON parse: %w (raw: %.200s)", err, raw)
+	var parsed extractResponse
+	if err := json.Unmarshal([]byte(extractJSON(raw)), &parsed); err != nil {
+		return extractResponse{}, resp.Cost, fmt.Errorf("extract JSON parse: %w (raw: %.200s)", err, raw)
 	}
 
-	return resp, nil
+	return parsed, resp.Cost, nil
 }
 
-func (s *graphReaderStrategy) extractFactsFromText(ctx context.Context, plan graph.RationalPlan, sourceURL, content string) ([]graph.AtomicFact, error) {
+func (s *graphReaderStrategy) extractFactsFromText(ctx context.Context, plan graph.RationalPlan, sourceURL, content string) ([]graph.AtomicFact, float64, error) {
 	user, err := renderTemplate(graph.TmplExtractText, map[string]any{
 		"Plan":      plan,
 		"SourceURL": sourceURL,
 		"Content":   content,
 	})
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	if s.agent.debug {
 		fmt.Printf("[LACONIC DEBUG] Graph ExtractText System Prompt:\n%s\n", graphExtractorSystemPrompt)
 		fmt.Printf("[LACONIC DEBUG] Graph ExtractText User Prompt:\n%s\n", user)
 	}
-	raw, err := s.cfg.Extractor.Generate(ctx, graphExtractorSystemPrompt, user)
+	resp, err := s.cfg.Extractor.Generate(ctx, graphExtractorSystemPrompt, user)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
-	raw = StripThinkBlocks(raw)
+	raw := StripThinkBlocks(resp.Text)
 	if s.agent.debug {
 		fmt.Printf("[LACONIC DEBUG] Graph ExtractText Response:\n%s\n", raw)
 	}
 
-	var resp struct {
+	var parsed struct {
 		NewFacts []graph.AtomicFact `json:"new_facts"`
 	}
-	if err := json.Unmarshal([]byte(extractJSON(raw)), &resp); err != nil {
-		return nil, fmt.Errorf("extract text JSON parse: %w (raw: %.200s)", err, raw)
+	if err := json.Unmarshal([]byte(extractJSON(raw)), &parsed); err != nil {
+		return nil, resp.Cost, fmt.Errorf("extract text JSON parse: %w (raw: %.200s)", err, raw)
 	}
 
-	return resp.NewFacts, nil
+	return parsed.NewFacts, resp.Cost, nil
 }
 
-func (s *graphReaderStrategy) findNeighbors(ctx context.Context, state *graph.AgentState, currentNode string) ([]graph.Node, error) {
+func (s *graphReaderStrategy) findNeighbors(ctx context.Context, state *graph.AgentState, currentNode string) ([]graph.Node, float64, error) {
 	user, err := renderTemplate(graph.TmplNeighbors, map[string]any{
 		"Plan":        state.Plan,
 		"Notebook":    state.Notebook,
 		"CurrentNode": currentNode,
 	})
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	if s.agent.debug {
 		fmt.Printf("[LACONIC DEBUG] Graph Neighbors System Prompt:\n%s\n", graphNeighborSystemPrompt)
 		fmt.Printf("[LACONIC DEBUG] Graph Neighbors User Prompt:\n%s\n", user)
 	}
-	raw, err := s.cfg.Neighbor.Generate(ctx, graphNeighborSystemPrompt, user)
+	resp, err := s.cfg.Neighbor.Generate(ctx, graphNeighborSystemPrompt, user)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
-	raw = StripThinkBlocks(raw)
+	raw := StripThinkBlocks(resp.Text)
 	if s.agent.debug {
 		fmt.Printf("[LACONIC DEBUG] Graph Neighbors Response:\n%s\n", raw)
 	}
 
 	var queries []string
 	if err := json.Unmarshal([]byte(extractJSON(raw)), &queries); err != nil {
-		return nil, fmt.Errorf("neighbors JSON parse: %w (raw: %.200s)", err, raw)
+		return nil, resp.Cost, fmt.Errorf("neighbors JSON parse: %w (raw: %.200s)", err, raw)
 	}
 	queries = trimStrings(queries)
 
@@ -390,38 +404,38 @@ func (s *graphReaderStrategy) findNeighbors(ctx context.Context, state *graph.Ag
 		}
 		nodes = append(nodes, graph.Node{Name: q, Rationale: "neighbor"})
 	}
-	return nodes, nil
+	return nodes, resp.Cost, nil
 }
 
-func (s *graphReaderStrategy) canAnswer(ctx context.Context, state *graph.AgentState) (bool, error) {
+func (s *graphReaderStrategy) canAnswer(ctx context.Context, state *graph.AgentState) (bool, float64, error) {
 	user, err := renderTemplate(graph.TmplAnswerCheck, map[string]any{
 		"Plan":     state.Plan,
 		"Notebook": state.Notebook,
 	})
 	if err != nil {
-		return false, err
+		return false, 0, err
 	}
 	if s.agent.debug {
 		fmt.Printf("[LACONIC DEBUG] Graph AnswerCheck System Prompt:\n%s\n", graphAnswerCheckSystemPrompt)
 		fmt.Printf("[LACONIC DEBUG] Graph AnswerCheck User Prompt:\n%s\n", user)
 	}
-	raw, err := s.cfg.Planner.Generate(ctx, graphAnswerCheckSystemPrompt, user)
+	resp, err := s.cfg.Planner.Generate(ctx, graphAnswerCheckSystemPrompt, user)
 	if err != nil {
-		return false, err
+		return false, 0, err
 	}
-	raw = StripThinkBlocks(raw)
+	raw := StripThinkBlocks(resp.Text)
 	if s.agent.debug {
 		fmt.Printf("[LACONIC DEBUG] Graph AnswerCheck Response:\n%s\n", raw)
 	}
 
-	var resp answerCheckResponse
-	if err := json.Unmarshal([]byte(extractJSON(raw)), &resp); err != nil {
-		return false, fmt.Errorf("answer check JSON parse: %w (raw: %.200s)", err, raw)
+	var parsed answerCheckResponse
+	if err := json.Unmarshal([]byte(extractJSON(raw)), &parsed); err != nil {
+		return false, resp.Cost, fmt.Errorf("answer check JSON parse: %w (raw: %.200s)", err, raw)
 	}
-	return resp.CanAnswer, nil
+	return parsed.CanAnswer, resp.Cost, nil
 }
 
-func (s *graphReaderStrategy) finalize(ctx context.Context, state *graph.AgentState) (string, error) {
+func (s *graphReaderStrategy) finalize(ctx context.Context, state *graph.AgentState) (string, float64, error) {
 	var b bytes.Buffer
 	b.WriteString("User Question:\n")
 	b.WriteString(state.Plan.OriginalQuestion)
@@ -447,14 +461,14 @@ func (s *graphReaderStrategy) finalize(ctx context.Context, state *graph.AgentSt
 		fmt.Printf("[LACONIC DEBUG] Graph Finalizer System Prompt:\n%s\n", graphFinalizerSystemPrompt)
 		fmt.Printf("[LACONIC DEBUG] Graph Finalizer User Prompt:\n%s\n", user)
 	}
-	out, err := s.cfg.Finalizer.Generate(ctx, graphFinalizerSystemPrompt, user)
+	resp, err := s.cfg.Finalizer.Generate(ctx, graphFinalizerSystemPrompt, user)
 	if err != nil {
-		return "", err
+		return "", 0, err
 	}
 	if s.agent.debug {
-		fmt.Printf("[LACONIC DEBUG] Graph Finalizer Response:\n%s\n", out)
+		fmt.Printf("[LACONIC DEBUG] Graph Finalizer Response:\n%s\n", resp.Text)
 	}
-	return StripThinkBlocks(out), nil
+	return StripThinkBlocks(resp.Text), resp.Cost, nil
 }
 
 func (s *graphReaderStrategy) addFacts(state *graph.AgentState, facts []graph.AtomicFact) {

@@ -20,7 +20,21 @@ type FetchProvider interface {
 	Fetch(ctx context.Context, url string) (string, error)
 }
 
+// LLMResponse is returned by LLMProvider.Generate and carries both the
+// generated text and the cost (in dollars) of the call.
+type LLMResponse struct {
+	Text string
+	Cost float64
+}
+
 // LLMProvider is implemented by user-supplied language model clients.
 type LLMProvider interface {
-	Generate(ctx context.Context, systemPrompt, userPrompt string) (string, error)
+	Generate(ctx context.Context, systemPrompt, userPrompt string) (LLMResponse, error)
+}
+
+// Result is returned by Agent.Answer and carries the final answer text
+// together with the total cost accumulated during the research loop.
+type Result struct {
+	Answer string
+	Cost   float64
 }

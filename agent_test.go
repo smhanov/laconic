@@ -14,6 +14,8 @@ type scriptedLLM struct {
 	plannerIdx int
 	synthIdx   int
 	finalIdx   int
+
+	costPerCall float64
 }
 
 func (s *scriptedLLM) next(list []string, idx *int) (string, error) {
@@ -25,17 +27,23 @@ func (s *scriptedLLM) next(list []string, idx *int) (string, error) {
 	return resp, nil
 }
 
-func (s *scriptedLLM) Generate(_ context.Context, systemPrompt, _ string) (string, error) {
+func (s *scriptedLLM) Generate(_ context.Context, systemPrompt, _ string) (LLMResponse, error) {
+	var text string
+	var err error
 	switch systemPrompt {
 	case plannerSystemPrompt:
-		return s.next(s.planner, &s.plannerIdx)
+		text, err = s.next(s.planner, &s.plannerIdx)
 	case synthesizerSystemPrompt:
-		return s.next(s.synth, &s.synthIdx)
+		text, err = s.next(s.synth, &s.synthIdx)
 	case finalizerSystemPrompt:
-		return s.next(s.final, &s.finalIdx)
+		text, err = s.next(s.final, &s.finalIdx)
 	default:
-		return "", errors.New("unknown system prompt")
+		return LLMResponse{}, errors.New("unknown system prompt")
 	}
+	if err != nil {
+		return LLMResponse{}, err
+	}
+	return LLMResponse{Text: text, Cost: s.costPerCall}, nil
 }
 
 type fakeSearch struct{ results []SearchResult }
@@ -60,11 +68,11 @@ func TestAgentSearchThenAnswer(t *testing.T) {
 		WithMaxIterations(3),
 	)
 
-	got, err := agent.Answer(context.Background(), "Why is the sky blue?")
+	res, err := agent.Answer(context.Background(), "Why is the sky blue?")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if got == "" {
+	if res.Answer == "" {
 		t.Fatal("expected non-empty answer")
 	}
 }
@@ -84,11 +92,69 @@ func TestAgentMaxIterationsBestEffort(t *testing.T) {
 		WithMaxIterations(2),
 	)
 
-	got, err := agent.Answer(context.Background(), "Q")
+	res, err := agent.Answer(context.Background(), "Q")
 	if err == nil {
 		t.Fatalf("expected best-effort error, got nil")
 	}
-	if got == "" {
+	if res.Answer == "" {
 		t.Fatalf("expected best-effort answer text")
+	}
+}
+
+func TestAgentCostTracking(t *testing.T) {
+	llm := &scriptedLLM{
+		planner:     []string{"Action: Search\nQuery: test query", "Action: Answer"},
+		synth:       []string{"some knowledge"},
+		final:       []string{"final answer"},
+		costPerCall: 0.01,
+	}
+
+	searcher := fakeSearch{results: []SearchResult{{Title: "t", URL: "u", Snippet: "s"}}}
+
+	agent := New(
+		WithPlannerModel(llm),
+		WithSynthesizerModel(llm),
+		WithSearchProvider(searcher),
+		WithSearchCost(0.005),
+		WithMaxIterations(3),
+	)
+
+	res, err := agent.Answer(context.Background(), "Test question")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res.Answer == "" {
+		t.Fatal("expected non-empty answer")
+	}
+	// Expected cost: planner(0.01) + search(0.005) + synth(0.01) + planner(0.01) + finalizer(0.01) = 0.045
+	expectedCost := 0.045
+	if res.Cost < expectedCost-0.001 || res.Cost > expectedCost+0.001 {
+		t.Fatalf("expected cost ~%.3f, got %.3f", expectedCost, res.Cost)
+	}
+}
+
+func TestAgentZeroCostByDefault(t *testing.T) {
+	llm := &scriptedLLM{
+		planner: []string{"Action: Search\nQuery: test", "Action: Answer"},
+		synth:   []string{"knowledge"},
+		final:   []string{"answer"},
+		// costPerCall defaults to 0
+	}
+
+	searcher := fakeSearch{results: []SearchResult{{Title: "t", URL: "u", Snippet: "s"}}}
+
+	agent := New(
+		WithPlannerModel(llm),
+		WithSynthesizerModel(llm),
+		WithSearchProvider(searcher),
+		WithMaxIterations(3),
+	)
+
+	res, err := agent.Answer(context.Background(), "Q")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res.Cost != 0 {
+		t.Fatalf("expected zero cost by default, got %f", res.Cost)
 	}
 }

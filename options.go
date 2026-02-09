@@ -65,6 +65,13 @@ func WithStrategyFactory(name string, factory StrategyFactory) Option {
 	}
 }
 
+// WithSearchCost sets the cost (in dollars) charged per search call.
+// The default is 0 (not tracked). This cost is added to the total each
+// time the SearchProvider.Search method is invoked.
+func WithSearchCost(costPerSearch float64) Option {
+	return func(a *Agent) { a.searchCost = costPerSearch }
+}
+
 // GraphReaderConfig configures the GraphReader strategy.
 type GraphReaderConfig struct {
 	Planner   LLMProvider

@@ -41,7 +41,7 @@ type ollamaResponse struct {
 	Done     bool   `json:"done"`
 }
 
-func (o *OllamaLLM) Generate(ctx context.Context, systemPrompt, userPrompt string) (string, error) {
+func (o *OllamaLLM) Generate(ctx context.Context, systemPrompt, userPrompt string) (laconic.LLMResponse, error) {
 	if o.Debug {
 		log.Printf("\n=== LLM Request (%s) ===\n[SYSTEM]\n%s\n\n[USER]\n%s\n=======================", o.Model, systemPrompt, userPrompt)
 	}
@@ -58,12 +58,12 @@ func (o *OllamaLLM) Generate(ctx context.Context, systemPrompt, userPrompt strin
 
 	body, err := doRequestWithRetries(ctx, url, "", reqBody, o.Debug, "ollama")
 	if err != nil {
-		return "", err
+		return laconic.LLMResponse{}, err
 	}
 
 	var ollamaResp ollamaResponse
 	if err := json.Unmarshal(body, &ollamaResp); err != nil {
-		return "", fmt.Errorf("failed to parse response: %w", err)
+		return laconic.LLMResponse{}, fmt.Errorf("failed to parse response: %w", err)
 	}
 
 	response := strings.TrimSpace(ollamaResp.Response)
@@ -71,7 +71,7 @@ func (o *OllamaLLM) Generate(ctx context.Context, systemPrompt, userPrompt strin
 		log.Printf("\n=== LLM Response ===\n%s\n====================\n", response)
 	}
 
-	return response, nil
+	return laconic.LLMResponse{Text: response}, nil
 }
 
 // ---------------------------------------------------------------------------
@@ -107,7 +107,7 @@ type openaiResponse struct {
 	Choices []openaiChoice `json:"choices"`
 }
 
-func (o *OpenAILLM) Generate(ctx context.Context, systemPrompt, userPrompt string) (string, error) {
+func (o *OpenAILLM) Generate(ctx context.Context, systemPrompt, userPrompt string) (laconic.LLMResponse, error) {
 	if o.Debug {
 		log.Printf("\n=== LLM Request (%s) ===\n[SYSTEM]\n%s\n\n[USER]\n%s\n=======================", o.Model, systemPrompt, userPrompt)
 	}
@@ -135,15 +135,15 @@ func (o *OpenAILLM) Generate(ctx context.Context, systemPrompt, userPrompt strin
 
 	body, err := doRequestWithRetries(ctx, url, o.APIKey, reqBody, o.Debug, "openai")
 	if err != nil {
-		return "", err
+		return laconic.LLMResponse{}, err
 	}
 
 	var oaiResp openaiResponse
 	if err := json.Unmarshal(body, &oaiResp); err != nil {
-		return "", fmt.Errorf("failed to parse response: %w", err)
+		return laconic.LLMResponse{}, fmt.Errorf("failed to parse response: %w", err)
 	}
 	if len(oaiResp.Choices) == 0 {
-		return "", fmt.Errorf("openai response contained no choices")
+		return laconic.LLMResponse{}, fmt.Errorf("openai response contained no choices")
 	}
 
 	response := strings.TrimSpace(oaiResp.Choices[0].Message.Content)
@@ -151,7 +151,7 @@ func (o *OpenAILLM) Generate(ctx context.Context, systemPrompt, userPrompt strin
 		log.Printf("\n=== LLM Response ===\n%s\n====================\n", response)
 	}
 
-	return response, nil
+	return laconic.LLMResponse{Text: response}, nil
 }
 
 // ---------------------------------------------------------------------------
@@ -321,9 +321,12 @@ func main() {
 	fmt.Printf("Strategy: %s\n", *strategy)
 	fmt.Printf("Question: %s\n\n", question)
 
-	ans, err := agent.Answer(context.Background(), question)
+	result, err := agent.Answer(context.Background(), question)
 	if err != nil {
 		log.Printf("Warning: %v", err)
 	}
-	fmt.Printf("Answer:\n%s\n", ans)
+	fmt.Printf("Answer:\n%s\n", result.Answer)
+	if result.Cost > 0 {
+		fmt.Printf("Total cost: $%.4f\n", result.Cost)
+	}
 }

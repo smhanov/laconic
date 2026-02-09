@@ -8,8 +8,13 @@ Laconic implements a small, loop-based agent focused on keeping prompts compact.
 - `Scratchpad`: mutable state with `OriginalQuestion`, `Knowledge`, `History`, `CurrentStep`, `IterationCount`.
 - `SearchProvider`: user-swappable search backend interface.
 - `FetchProvider`: optional URL fetcher for strategies that read full pages.
-- `LLMProvider`: user-supplied model wrapper; no vendor SDKs are pulled in.
+- `LLMProvider`: user-supplied model wrapper; no vendor SDKs are pulled in. Returns `LLMResponse` with text and cost.
 - `Strategy`: pluggable research loop implementations (default: scratchpad, optional: graph-reader).
+- `Result`: returned by `Agent.Answer`, carries the answer text and accumulated cost.
+
+## Cost tracking
+
+Every LLM call returns an `LLMResponse{Text, Cost}`. The strategy accumulates all LLM costs and search costs (configured via `WithSearchCost`) into the `Result.Cost` field. When the cost is not relevant, providers can return `Cost: 0` and the total will simply be zero.
 
 ## Loop flow
 
@@ -24,6 +29,7 @@ Laconic implements a small, loop-based agent focused on keeping prompts compact.
 
 - **Scratchpad compression** keeps context size flat even with many iterations.
 - **Dual-model support** allows a strong planner and cheaper synthesizer/finalizer to save cost.
+- **Cost accounting** sums LLM and search costs so callers can monitor spend.
 - **No embedded LLM clients** keeps dependencies light and lets you swap providers freely.
 
 ## Extending
