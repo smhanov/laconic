@@ -7,11 +7,14 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/smhanov/laconic"
 )
+
+const braveMaxRetries = 3
 
 // Brave uses the Brave Search API. An API key is required via X-Subscription-Token.
 type Brave struct {
@@ -45,9 +48,34 @@ func (b *Brave) Search(ctx context.Context, query string) ([]laconic.SearchResul
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("X-Subscription-Token", b.APIKey)
 
-	resp, err := b.client.Do(req)
-	if err != nil {
-		return nil, err
+	var resp *http.Response
+	for attempt := 0; attempt <= braveMaxRetries; attempt++ {
+		if attempt > 0 {
+			// Clone the request for retries (body is nil for GET so this is safe).
+			req, err = http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+			if err != nil {
+				return nil, err
+			}
+			req.Header.Set("Accept", "application/json")
+			req.Header.Set("X-Subscription-Token", b.APIKey)
+		}
+
+		resp, err = b.client.Do(req)
+		if err != nil {
+			return nil, err
+		}
+
+		if resp.StatusCode != http.StatusTooManyRequests {
+			break
+		}
+		resp.Body.Close()
+
+		wait := braveRetryDelay(resp.Header)
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(wait):
+		}
 	}
 	defer resp.Body.Close()
 
@@ -78,4 +106,29 @@ func (b *Brave) Search(ctx context.Context, query string) ([]laconic.SearchResul
 	}
 
 	return results, nil
+}
+
+// braveRetryDelay reads the X-RateLimit-Reset header to determine how long
+// to wait before retrying. The header contains a comma-separated list of
+// reset times in seconds (e.g. "1, 1419704"); we use the smallest value.
+// Falls back to 1 second if the header is missing or unparseable.
+func braveRetryDelay(h http.Header) time.Duration {
+	raw := h.Get("X-RateLimit-Reset")
+	if raw == "" {
+		return 1 * time.Second
+	}
+	minReset := -1
+	for _, part := range strings.Split(raw, ",") {
+		n, err := strconv.Atoi(strings.TrimSpace(part))
+		if err != nil || n < 0 {
+			continue
+		}
+		if minReset < 0 || n < minReset {
+			minReset = n
+		}
+	}
+	if minReset <= 0 {
+		return 1 * time.Second
+	}
+	return time.Duration(minReset) * time.Second
 }
