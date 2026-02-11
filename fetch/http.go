@@ -23,6 +23,12 @@ func NewHTTP() *HTTPFetcher {
 	return &HTTPFetcher{client: &http.Client{Timeout: 15 * time.Second}}
 }
 
+// NewHTTPWithClient creates a HTTP fetcher using the supplied HTTP client.
+// This is useful for overriding the default timeout.
+func NewHTTPWithClient(client *http.Client) *HTTPFetcher {
+	return &HTTPFetcher{client: client}
+}
+
 // Fetch downloads the URL content, strips HTML to plain text, and truncates.
 func (f *HTTPFetcher) Fetch(ctx context.Context, url string) (string, error) {
 	trimmed := strings.TrimSpace(url)

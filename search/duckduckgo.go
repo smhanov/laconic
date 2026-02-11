@@ -24,6 +24,12 @@ func NewDuckDuckGo() *DuckDuckGo {
 	return &DuckDuckGo{client: &http.Client{Timeout: 15 * time.Second}}
 }
 
+// NewDuckDuckGoWithClient creates a DuckDuckGo searcher using the supplied HTTP client.
+// This is useful for overriding the default timeout.
+func NewDuckDuckGoWithClient(client *http.Client) *DuckDuckGo {
+	return &DuckDuckGo{client: client}
+}
+
 // Search scrapes the DuckDuckGo lite HTML page for results.
 func (d *DuckDuckGo) Search(ctx context.Context, query string) ([]laconic.SearchResult, error) {
 	if strings.TrimSpace(query) == "" {

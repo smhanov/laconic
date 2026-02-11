@@ -21,6 +21,14 @@
 //	provider := search.NewTavily("your-api-key", "advanced")
 //	results, err := provider.Search(ctx, "climate change research 2024")
 //
+// # Custom HTTP Client
+//
+// Each provider has a WithClient variant that accepts a custom *http.Client,
+// useful for overriding the default timeout:
+//
+//	client := &http.Client{Timeout: 2 * time.Minute}
+//	provider := search.NewDuckDuckGoWithClient(client)
+//
 // # Custom Providers
 //
 // Implement the laconic.SearchProvider interface to add your own search backend:

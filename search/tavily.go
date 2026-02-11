@@ -29,6 +29,15 @@ func NewTavily(apiKey string, depth string) *Tavily {
 	return &Tavily{APIKey: apiKey, Depth: depth, client: &http.Client{Timeout: 10 * time.Second}}
 }
 
+// NewTavilyWithClient constructs a Tavily search provider using the supplied HTTP client.
+// This is useful for overriding the default timeout.
+func NewTavilyWithClient(apiKey string, depth string, client *http.Client) *Tavily {
+	if depth == "" {
+		depth = "basic"
+	}
+	return &Tavily{APIKey: apiKey, Depth: depth, client: client}
+}
+
 // Search posts a query to Tavily.
 func (t *Tavily) Search(ctx context.Context, query string) ([]laconic.SearchResult, error) {
 	if strings.TrimSpace(t.APIKey) == "" {

@@ -24,6 +24,12 @@ func NewBrave(apiKey string) *Brave {
 	return &Brave{APIKey: apiKey, client: &http.Client{Timeout: 10 * time.Second}}
 }
 
+// NewBraveWithClient constructs a Brave search provider using the supplied HTTP client.
+// This is useful for overriding the default timeout.
+func NewBraveWithClient(apiKey string, client *http.Client) *Brave {
+	return &Brave{APIKey: apiKey, client: client}
+}
+
 // Search executes a Brave query.
 func (b *Brave) Search(ctx context.Context, query string) ([]laconic.SearchResult, error) {
 	if strings.TrimSpace(b.APIKey) == "" {

@@ -103,7 +103,7 @@ func (s *graphReaderStrategy) Answer(ctx context.Context, question string) (Resu
 
 		results, err := s.agent.searcher.Search(ctx, current.Name)
 		if err != nil {
-			continue
+			return Result{}, fmt.Errorf("search: %w", err)
 		}
 		totalCost += s.agent.searchCost
 
