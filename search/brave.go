@@ -29,6 +29,10 @@ var (
 	braveGates   = map[string]*braveKeyGate{}
 )
 
+const (
+	braveMax429Retries = 8
+)
+
 // braveGateFor returns (or creates) the shared gate for the given API key.
 func braveGateFor(apiKey string) *braveKeyGate {
 	braveGatesMu.Lock()
@@ -100,6 +104,7 @@ func (b *Brave) Search(ctx context.Context, query string) ([]laconic.SearchResul
 
 	var resp *http.Response
 	var err error
+	retryCount := 0
 	for {
 		// Wait for our turn under the shared gate.
 		if err := gate.waitAndLock(ctx); err != nil {
@@ -127,9 +132,13 @@ func (b *Brave) Search(ctx context.Context, query string) ([]laconic.SearchResul
 		}
 
 		// 429 — read the retry delay, tell the gate, then loop.
+		retryCount++
 		wait := braveRetryDelay(resp.Header)
 		resp.Body.Close()
 		gate.unlock(wait)
+		if retryCount >= braveMax429Retries {
+			return nil, fmt.Errorf("brave rate limit exceeded after %d retries", retryCount)
+		}
 	}
 	defer resp.Body.Close()
 
@@ -167,6 +176,9 @@ func (b *Brave) Search(ctx context.Context, query string) ([]laconic.SearchResul
 // reset times in seconds (e.g. "1, 1419704"); we use the smallest value.
 // Falls back to 1 second if the header is missing or unparseable.
 func braveRetryDelay(h http.Header) time.Duration {
+	if d, ok := parseRetryAfter(h.Get("Retry-After")); ok {
+		return d
+	}
 	raw := h.Get("X-RateLimit-Reset")
 	if raw == "" {
 		return 1 * time.Second
@@ -191,6 +203,33 @@ func braveRetryDelay(h http.Header) time.Duration {
 		d = 30 * time.Second
 	}
 	return d
+}
+
+func parseRetryAfter(raw string) (time.Duration, bool) {
+	if strings.TrimSpace(raw) == "" {
+		return 0, false
+	}
+	if seconds, err := strconv.Atoi(strings.TrimSpace(raw)); err == nil {
+		d := time.Duration(seconds) * time.Second
+		if d <= 0 {
+			return 1 * time.Second, true
+		}
+		if d > 30*time.Second {
+			d = 30 * time.Second
+		}
+		return d, true
+	}
+	if when, err := http.ParseTime(raw); err == nil {
+		d := time.Until(when)
+		if d <= 0 {
+			return 1 * time.Second, true
+		}
+		if d > 30*time.Second {
+			d = 30 * time.Second
+		}
+		return d, true
+	}
+	return 0, false
 }
 
 // braveNextDelay reads X-RateLimit-Remaining to decide how long to hold the
