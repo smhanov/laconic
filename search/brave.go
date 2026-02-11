@@ -9,12 +9,65 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/smhanov/laconic"
 )
 
-const braveMaxRetries = 3
+const braveMaxRetries = 5
+
+// braveKeyGate holds a per-API-key mutex and the earliest time that a request
+// is allowed. All Brave instances sharing an API key share a single gate so
+// that only one request per second is issued for that key, matching the
+// Brave rate-limit of 1 req/s.
+type braveKeyGate struct {
+	mu        sync.Mutex
+	readyAt   time.Time // earliest moment the next request may fire
+}
+
+var (
+	braveGatesMu sync.Mutex
+	braveGates   = map[string]*braveKeyGate{}
+)
+
+// braveGateFor returns (or creates) the shared gate for the given API key.
+func braveGateFor(apiKey string) *braveKeyGate {
+	braveGatesMu.Lock()
+	defer braveGatesMu.Unlock()
+	g, ok := braveGates[apiKey]
+	if !ok {
+		g = &braveKeyGate{}
+		braveGates[apiKey] = g
+	}
+	return g
+}
+
+// waitAndLock blocks until the caller may issue a request, then returns with
+// the gate locked. The caller MUST call gate.unlock(delay) after receiving
+// the response to set the next allowed time and release the lock.
+// Returns ctx.Err() if the context expires while waiting.
+func (g *braveKeyGate) waitAndLock(ctx context.Context) error {
+	g.mu.Lock()
+	now := time.Now()
+	if wait := g.readyAt.Sub(now); wait > 0 {
+		g.mu.Unlock() // release while sleeping
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(wait):
+		}
+		g.mu.Lock()
+	}
+	return nil
+}
+
+// unlock sets the minimum delay before the next request and releases the
+// gate so the next waiter may proceed.
+func (g *braveKeyGate) unlock(delay time.Duration) {
+	g.readyAt = time.Now().Add(delay)
+	g.mu.Unlock()
+}
 
 // Brave uses the Brave Search API. An API key is required via X-Subscription-Token.
 type Brave struct {
@@ -33,7 +86,8 @@ func NewBraveWithClient(apiKey string, client *http.Client) *Brave {
 	return &Brave{APIKey: apiKey, client: client}
 }
 
-// Search executes a Brave query.
+// Search executes a Brave query. Concurrent calls sharing the same API key
+// are serialised through a shared per-key gate to respect rate limits.
 func (b *Brave) Search(ctx context.Context, query string) ([]laconic.SearchResult, error) {
 	if strings.TrimSpace(b.APIKey) == "" {
 		return nil, errors.New("brave: API key is missing")
@@ -41,41 +95,40 @@ func (b *Brave) Search(ctx context.Context, query string) ([]laconic.SearchResul
 	encoded := url.QueryEscape(query)
 	endpoint := fmt.Sprintf("https://api.search.brave.com/res/v1/web/search?q=%s", encoded)
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("X-Subscription-Token", b.APIKey)
+	gate := braveGateFor(b.APIKey)
 
 	var resp *http.Response
+	var err error
 	for attempt := 0; attempt <= braveMaxRetries; attempt++ {
-		if attempt > 0 {
-			// Clone the request for retries (body is nil for GET so this is safe).
-			req, err = http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
-			if err != nil {
-				return nil, err
-			}
-			req.Header.Set("Accept", "application/json")
-			req.Header.Set("X-Subscription-Token", b.APIKey)
+		// Wait for our turn under the shared gate.
+		if err := gate.waitAndLock(ctx); err != nil {
+			return nil, err
 		}
+
+		req, reqErr := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+		if reqErr != nil {
+			gate.unlock(0)
+			return nil, reqErr
+		}
+		req.Header.Set("Accept", "application/json")
+		req.Header.Set("X-Subscription-Token", b.APIKey)
 
 		resp, err = b.client.Do(req)
 		if err != nil {
+			gate.unlock(1 * time.Second) // back off before letting others try
 			return nil, err
 		}
 
 		if resp.StatusCode != http.StatusTooManyRequests {
+			// Use the per-second rate-limit header to pace the next caller.
+			gate.unlock(braveNextDelay(resp.Header))
 			break
 		}
-		resp.Body.Close()
 
+		// 429 — read the retry delay, tell the gate, then loop.
 		wait := braveRetryDelay(resp.Header)
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case <-time.After(wait):
-		}
+		resp.Body.Close()
+		gate.unlock(wait)
 	}
 	defer resp.Body.Close()
 
@@ -131,4 +184,25 @@ func braveRetryDelay(h http.Header) time.Duration {
 		return 1 * time.Second
 	}
 	return time.Duration(minReset) * time.Second
+}
+
+// braveNextDelay reads X-RateLimit-Remaining to decide how long to hold the
+// gate before allowing the next request. If the per-second bucket is
+// exhausted (remaining == 0), we wait 1 second. Otherwise we allow
+// immediately.
+func braveNextDelay(h http.Header) time.Duration {
+	raw := h.Get("X-RateLimit-Remaining")
+	if raw == "" {
+		return 1 * time.Second // be conservative when header is absent
+	}
+	// The header is comma-separated: "0, 14832" (per-second, per-month).
+	parts := strings.SplitN(raw, ",", 2)
+	perSecond, err := strconv.Atoi(strings.TrimSpace(parts[0]))
+	if err != nil {
+		return 1 * time.Second
+	}
+	if perSecond <= 0 {
+		return 1 * time.Second
+	}
+	return 0
 }
