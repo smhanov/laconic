@@ -111,7 +111,40 @@ go run ./examples/research/ \
 
 # Enable debug logging to see all LLM prompts and responses
 go run ./examples/research/ -model mistral -prompt question.txt -debug
+
+# Use template variables in prompt files
+# If question.txt contains "Tell me about {{TOPIC}} in {{YEAR}}", you can fill
+# the placeholders from the command line:
+go run ./examples/research/ \
+    -model mistral \
+    -prompt question.txt \
+    -var TOPIC=quantum_computing \
+    -var YEAR=2025
 ```
+
+#### Template variables
+
+Prompt files can contain `{{KEY}}` placeholders that are replaced at runtime
+using the `-var` flag. The flag is repeatable — pass one `-var KEY=VALUE` for
+each placeholder.
+
+For example, given a prompt file `ticker.txt`:
+
+```
+Research the stock ticker {{TICKER}} and summarize recent news.
+```
+
+Run it with:
+
+```bash
+go run ./examples/research/ -model mistral -prompt ticker.txt -var TICKER=AAPL
+```
+
+The agent will receive the fully expanded prompt:
+`Research the stock ticker AAPL and summarize recent news.`
+
+This makes it easy to reuse the same prompt template for different inputs
+without editing the file each time.
 
 **CLI flags:**
 
@@ -128,6 +161,7 @@ go run ./examples/research/ -model mistral -prompt question.txt -debug
 | `-search`          | `duckduckgo` | Search provider: `duckduckgo` or `brave`                                                      |
 | `-brave-key`       |              | Brave Search API key (required with `-search brave`)                                          |
 | `-debug`           | `false`      | Print all LLM prompts and responses                                                           |
+| `-var`             |              | Set a template variable: `-var KEY=VALUE` (repeatable). Replaces `{{KEY}}` in the prompt file |
 
 ## Strategies
 

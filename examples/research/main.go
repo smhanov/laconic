@@ -233,6 +233,23 @@ func doRequestWithRetries(ctx context.Context, url, apiKey string, reqBody inter
 }
 
 // ---------------------------------------------------------------------------
+// varMap is a repeatable flag that collects key=value pairs.
+// ---------------------------------------------------------------------------
+
+type varMap map[string]string
+
+func (v *varMap) String() string { return fmt.Sprintf("%v", map[string]string(*v)) }
+
+func (v *varMap) Set(s string) error {
+	parts := strings.SplitN(s, "=", 2)
+	if len(parts) != 2 || parts[0] == "" {
+		return fmt.Errorf("expected KEY=VALUE, got %q", s)
+	}
+	(*v)[parts[0]] = parts[1]
+	return nil
+}
+
+// ---------------------------------------------------------------------------
 // main
 // ---------------------------------------------------------------------------
 
@@ -248,6 +265,8 @@ func main() {
 	searchProvider := flag.String("search", "duckduckgo", "Search provider: duckduckgo or brave")
 	braveKey := flag.String("brave-key", "", "Brave Search API key (required when -search=brave)")
 	debug := flag.Bool("debug", false, "Print full LLM prompts and responses")
+	vars := make(varMap)
+	flag.Var(&vars, "var", "Set a template variable: -var KEY=VALUE (repeatable). Replaces {{KEY}} in prompt file.")
 
 	flag.Parse()
 
@@ -269,9 +288,24 @@ func main() {
 		log.Fatal("Error: prompt file is empty")
 	}
 
+	// Replace {{KEY}} placeholders with values supplied via -var flags.
+	for k, v := range vars {
+		question = strings.ReplaceAll(question, "{{"+k+"}}", v)
+	}
+
 	// Build the LLM provider based on the chosen backend.
 	var llm laconic.LLMProvider
 	switch strings.ToLower(*backend) {
+	case "ollama":
+		ep := *endpoint
+		if ep == "" {
+			ep = "localhost:11434"
+		}
+		llm = &OllamaLLM{
+			Endpoint: ep,
+			Model:    *model,
+			Debug:    *debug,
+		}
 	case "openai":
 		ep := *endpoint
 		if ep == "" {
@@ -283,16 +317,8 @@ func main() {
 			APIKey:   *apiKey,
 			Debug:    *debug,
 		}
-	default: // "ollama"
-		ep := *endpoint
-		if ep == "" {
-			ep = "localhost:11434"
-		}
-		llm = &OllamaLLM{
-			Endpoint: ep,
-			Model:    *model,
-			Debug:    *debug,
-		}
+	default:
+		log.Fatalf("Error: unknown backend %q (expected: ollama or openai)", *backend)
 	}
 
 	var searcher laconic.SearchProvider
