@@ -15,8 +15,6 @@ import (
 	"github.com/smhanov/laconic"
 )
 
-const braveMaxRetries = 5
-
 // braveKeyGate holds a per-API-key mutex and the earliest time that a request
 // is allowed. All Brave instances sharing an API key share a single gate so
 // that only one request per second is issued for that key, matching the
@@ -99,7 +97,7 @@ func (b *Brave) Search(ctx context.Context, query string) ([]laconic.SearchResul
 
 	var resp *http.Response
 	var err error
-	for attempt := 0; attempt <= braveMaxRetries; attempt++ {
+	for {
 		// Wait for our turn under the shared gate.
 		if err := gate.waitAndLock(ctx); err != nil {
 			return nil, err
