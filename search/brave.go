@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -29,9 +30,6 @@ var (
 	braveGates   = map[string]*braveKeyGate{}
 )
 
-const (
-	braveMax429Retries = 8
-)
 
 // braveGateFor returns (or creates) the shared gate for the given API key.
 func braveGateFor(apiKey string) *braveKeyGate {
@@ -136,9 +134,7 @@ func (b *Brave) Search(ctx context.Context, query string) ([]laconic.SearchResul
 		wait := braveRetryDelay(resp.Header)
 		resp.Body.Close()
 		gate.unlock(wait)
-		if retryCount >= braveMax429Retries {
-			return nil, fmt.Errorf("brave rate limit exceeded after %d retries", retryCount)
-		}
+		log.Printf("brave: 429 rate limited (attempt %d), backing off %v", retryCount, wait)
 	}
 	defer resp.Body.Close()
 
