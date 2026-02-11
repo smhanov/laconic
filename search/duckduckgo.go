@@ -42,16 +42,35 @@ func (d *DuckDuckGo) Search(ctx context.Context, query string) ([]laconic.Search
 	formData := url.Values{}
 	formData.Set("q", query)
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(formData.Encode()))
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	var resp *http.Response
+	delay := 1 * time.Second
+	for {
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(formData.Encode()))
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
-	resp, err := d.client.Do(req)
-	if err != nil {
-		return nil, err
+		resp, err = d.client.Do(req)
+		if err != nil {
+			return nil, err
+		}
+
+		if resp.StatusCode != http.StatusTooManyRequests {
+			break
+		}
+		resp.Body.Close()
+
+		// Back off and retry on 429, doubling the delay each time up to 30 s.
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(delay):
+		}
+		if delay < 30*time.Second {
+			delay *= 2
+		}
 	}
 	defer resp.Body.Close()
 

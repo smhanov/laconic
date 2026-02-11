@@ -55,15 +55,34 @@ func (t *Tavily) Search(ctx context.Context, query string) ([]laconic.SearchResu
 		return nil, err
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://api.tavily.com/search", bytes.NewReader(payload))
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Content-Type", "application/json")
+	var resp *http.Response
+	delay := 1 * time.Second
+	for {
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://api.tavily.com/search", bytes.NewReader(payload))
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Content-Type", "application/json")
 
-	resp, err := t.client.Do(req)
-	if err != nil {
-		return nil, err
+		resp, err = t.client.Do(req)
+		if err != nil {
+			return nil, err
+		}
+
+		if resp.StatusCode != http.StatusTooManyRequests {
+			break
+		}
+		resp.Body.Close()
+
+		// Back off and retry on 429, doubling the delay each time up to 30 s.
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(delay):
+		}
+		if delay < 30*time.Second {
+			delay *= 2
+		}
 	}
 	defer resp.Body.Close()
 

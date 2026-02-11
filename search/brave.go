@@ -46,18 +46,21 @@ func braveGateFor(apiKey string) *braveKeyGate {
 // the response to set the next allowed time and release the lock.
 // Returns ctx.Err() if the context expires while waiting.
 func (g *braveKeyGate) waitAndLock(ctx context.Context) error {
-	g.mu.Lock()
-	now := time.Now()
-	if wait := g.readyAt.Sub(now); wait > 0 {
+	for {
+		g.mu.Lock()
+		now := time.Now()
+		wait := g.readyAt.Sub(now)
+		if wait <= 0 {
+			return nil // caller now holds the lock
+		}
 		g.mu.Unlock() // release while sleeping
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-time.After(wait):
 		}
-		g.mu.Lock()
+		// Re-check readyAt in case another goroutine pushed it out.
 	}
-	return nil
 }
 
 // unlock sets the minimum delay before the next request and releases the
@@ -181,7 +184,13 @@ func braveRetryDelay(h http.Header) time.Duration {
 	if minReset <= 0 {
 		return 1 * time.Second
 	}
-	return time.Duration(minReset) * time.Second
+	d := time.Duration(minReset) * time.Second
+	// Cap at 30 seconds so monthly-reset values (e.g. 1 419 704 s) don't
+	// cause the retry loop to hang for days.
+	if d > 30*time.Second {
+		d = 30 * time.Second
+	}
+	return d
 }
 
 // braveNextDelay reads X-RateLimit-Remaining to decide how long to hold the
