@@ -76,6 +76,21 @@ func (s *graphReaderStrategy) Answer(ctx context.Context, question string) (Resu
 	var totalCost float64
 
 	state := graph.NewAgentState(question)
+
+	// Pre-populate notebook from prior knowledge if supplied.
+	if pk := s.agent.priorKnowledge; pk != "" {
+		var priorFacts []graph.AtomicFact
+		if err := json.Unmarshal([]byte(pk), &priorFacts); err == nil {
+			state.Notebook.Clues = append(state.Notebook.Clues, priorFacts...)
+		} else {
+			// Plain text: wrap as a single atomic fact.
+			state.Notebook.Clues = append(state.Notebook.Clues, graph.AtomicFact{
+				ID:      "prior-1",
+				Content: pk,
+			})
+		}
+	}
+
 	plan, cost, err := s.generatePlan(ctx, question)
 	totalCost += cost
 	if err != nil {
@@ -176,7 +191,15 @@ func (s *graphReaderStrategy) Answer(ctx context.Context, question string) (Resu
 	if err != nil {
 		return Result{}, err
 	}
-	return Result{Answer: answer, Cost: totalCost}, nil
+
+	// Encode collected knowledge as JSON.
+	knowledge := ""
+	if len(state.Notebook.Clues) > 0 {
+		if kb, err := json.Marshal(state.Notebook.Clues); err == nil {
+			knowledge = string(kb)
+		}
+	}
+	return Result{Answer: answer, Cost: totalCost, Knowledge: knowledge}, nil
 }
 
 type planResponse struct {

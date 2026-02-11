@@ -36,6 +36,9 @@ func (a *Agent) answerScratchpad(ctx context.Context, question string) (Result, 
 	}
 
 	pad := NewScratchpad(question)
+	if a.priorKnowledge != "" {
+		pad.Knowledge = a.priorKnowledge
+	}
 	var totalCost float64
 
 	for i := 0; i < a.maxIterations; i++ {
@@ -74,7 +77,7 @@ func (a *Agent) answerScratchpad(ctx context.Context, question string) (Result, 
 			if err != nil {
 				return Result{}, err
 			}
-			return Result{Answer: answer, Cost: totalCost}, nil
+			return Result{Answer: answer, Cost: totalCost, Knowledge: pad.Knowledge}, nil
 		case PlannerActionSearch:
 			if a.searcher == nil {
 				return Result{}, errors.New("search requested but no search provider configured")
@@ -101,5 +104,5 @@ func (a *Agent) answerScratchpad(ctx context.Context, question string) (Result, 
 	if err != nil {
 		return Result{}, fmt.Errorf("max iterations reached without answer: %w", err)
 	}
-	return Result{Answer: final, Cost: totalCost}, errors.New("max iterations reached; returning best-effort answer")
+	return Result{Answer: final, Cost: totalCost, Knowledge: pad.Knowledge}, errors.New("max iterations reached; returning best-effort answer")
 }

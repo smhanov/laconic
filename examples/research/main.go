@@ -264,6 +264,7 @@ func main() {
 	graphSteps := flag.Int("graph-max-steps", 8, "Maximum steps for graph-reader strategy")
 	searchProvider := flag.String("search", "duckduckgo", "Search provider: duckduckgo or brave")
 	braveKey := flag.String("brave-key", "", "Brave Search API key (required when -search=brave)")
+	knowledgeFile := flag.String("knowledge", "", "Path to a file for reading/writing collected knowledge (enables follow-up questions)")
 	debug := flag.Bool("debug", false, "Print full LLM prompts and responses")
 	vars := make(varMap)
 	flag.Var(&vars, "var", "Set a template variable: -var KEY=VALUE (repeatable). Replaces {{KEY}} in prompt file.")
@@ -347,10 +348,32 @@ func main() {
 	fmt.Printf("Strategy: %s\n", *strategy)
 	fmt.Printf("Question: %s\n\n", question)
 
-	result, err := agent.Answer(context.Background(), question)
+	// Load prior knowledge if the knowledge file exists.
+	var answerOpts []laconic.AnswerOption
+	if *knowledgeFile != "" {
+		if kd, err := os.ReadFile(*knowledgeFile); err == nil {
+			prior := strings.TrimSpace(string(kd))
+			if prior != "" {
+				fmt.Printf("Loaded prior knowledge from %s (%d bytes)\n", *knowledgeFile, len(prior))
+				answerOpts = append(answerOpts, laconic.WithKnowledge(prior))
+			}
+		}
+	}
+
+	result, err := agent.Answer(context.Background(), question, answerOpts...)
 	if err != nil {
 		log.Printf("Warning: %v", err)
 	}
+
+	// Save collected knowledge to file.
+	if *knowledgeFile != "" && result.Knowledge != "" {
+		if err := os.WriteFile(*knowledgeFile, []byte(result.Knowledge), 0644); err != nil {
+			log.Printf("Warning: failed to write knowledge file: %v", err)
+		} else {
+			fmt.Printf("Knowledge saved to %s (%d bytes)\n", *knowledgeFile, len(result.Knowledge))
+		}
+	}
+
 	fmt.Printf("Answer:\n%s\n", result.Answer)
 	if result.Cost > 0 {
 		fmt.Printf("Total cost: $%.4f\n", result.Cost)

@@ -24,6 +24,7 @@ The agent found all three laureates, their exact affiliations, and their distinc
 - Optional `FetchProvider` for reading full web pages (used by Graph Reader).
 - Dual-model support: use a stronger planner and a cheaper synthesizer/finalizer to save cost.
 - **Cost tracking**: accumulate LLM and search costs automatically; `Result.Cost` reports total spend.
+- **Knowledge carry-over**: `Result.Knowledge` captures the collected knowledge; pass it back via `WithKnowledge` to answer follow-up questions without re-searching.
 - Minimal dependencies (stdlib only, no vendor SDKs).
 - Pluggable strategy system — register your own with `WithStrategyFactory`.
 
@@ -161,6 +162,7 @@ without editing the file each time.
 | `-search`          | `duckduckgo` | Search provider: `duckduckgo` or `brave`                                                      |
 | `-brave-key`       |              | Brave Search API key (required with `-search brave`)                                          |
 | `-debug`           | `false`      | Print all LLM prompts and responses                                                           |
+| `-knowledge`       |              | Path to a file for reading/writing collected knowledge (enables follow-up questions)            |
 | `-var`             |              | Set a template variable: `-var KEY=VALUE` (repeatable). Replaces `{{KEY}}` in the prompt file |
 
 ## Strategies
@@ -308,14 +310,43 @@ A `Strategy` must implement `Name() string` and `Answer(ctx, question) (Result, 
 
 ```go
 type Result struct {
-    Answer string  // the final answer text
-    Cost   float64 // total accumulated cost in dollars
+    Answer    string  // the final answer text
+    Cost      float64 // total accumulated cost in dollars
+    Knowledge string  // collected knowledge (scratchpad text or JSON notebook)
 }
 ```
 
+The `Knowledge` field captures the internal state accumulated during research:
+- **Scratchpad strategy**: a free-text summary produced by the synthesizer.
+- **Graph Reader strategy**: a JSON array of atomic facts (`[]graph.AtomicFact`).
+
+You can pass this value back to a subsequent `Answer` call via `WithKnowledge` to support follow-up questions (see below).
+
+### Follow-up questions
+
+After an initial research session, you can answer follow-up questions
+without losing the knowledge that was already gathered:
+
+```go
+// Initial research
+result, err := agent.Answer(ctx, "What is the population of Tokyo?")
+
+// Follow-up — prior knowledge is pre-loaded into the strategy's state
+followUp, err := agent.Answer(ctx,
+    "How does that compare to Osaka?",
+    laconic.WithKnowledge(result.Knowledge),
+)
+```
+
+When prior knowledge is supplied:
+- **Scratchpad** pre-populates its `Knowledge` field, so the planner can
+  see existing facts and decide whether to search for more.
+- **Graph Reader** pre-populates its notebook with the atomic facts, so
+  exploration starts from an informed state.
+
 ### Agent
 
-Create with `laconic.New(opts...)`, then call `agent.Answer(ctx, question)` which returns a `Result`.
+Create with `laconic.New(opts...)`, then call `agent.Answer(ctx, question, answerOpts...)` which returns a `Result`.
 
 ### Functional options
 
@@ -333,6 +364,14 @@ Create with `laconic.New(opts...)`, then call `agent.Answer(ctx, question)` whic
 | `WithGraphReaderConfig(cfg)`    | Configure the graph-reader strategy (MaxSteps, per-role LLMs)  |
 | `WithSearchCost(cost)`          | Cost in dollars charged per search call (default: 0)           |
 | `WithDebug(bool)`               | Log all LLM prompts and responses to stdout                    |
+
+### Answer options
+
+These options are passed to individual `Answer` calls rather than to `New`:
+
+| Option                 | Description                                                          |
+| ---------------------- | -------------------------------------------------------------------- |
+| `WithKnowledge(k)`     | Supply prior knowledge from a previous `Result.Knowledge` value      |
 
 ## Search providers
 

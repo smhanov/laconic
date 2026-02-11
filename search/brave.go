@@ -105,9 +105,12 @@ func (b *Brave) Search(ctx context.Context, query string) ([]laconic.SearchResul
 	retryCount := 0
 	for {
 		// Wait for our turn under the shared gate.
+		log.Printf("[BRAVE DEBUG] query=%q waiting for gate (retry=%d)", query, retryCount)
 		if err := gate.waitAndLock(ctx); err != nil {
+			log.Printf("[BRAVE DEBUG] query=%q gate wait failed: %v", query, err)
 			return nil, err
 		}
+		log.Printf("[BRAVE DEBUG] query=%q gate acquired, sending request", query)
 
 		req, reqErr := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 		if reqErr != nil {

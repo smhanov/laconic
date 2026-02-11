@@ -158,3 +158,104 @@ func TestAgentZeroCostByDefault(t *testing.T) {
 		t.Fatalf("expected zero cost by default, got %f", res.Cost)
 	}
 }
+
+func TestResultKnowledge(t *testing.T) {
+	llm := &scriptedLLM{
+		planner: []string{"Action: Search\nQuery: test query", "Action: Answer"},
+		synth:   []string{"synthesized knowledge about the topic"},
+		final:   []string{"final answer"},
+	}
+
+	searcher := fakeSearch{results: []SearchResult{{Title: "t", URL: "u", Snippet: "s"}}}
+
+	agent := New(
+		WithPlannerModel(llm),
+		WithSynthesizerModel(llm),
+		WithSearchProvider(searcher),
+		WithMaxIterations(3),
+	)
+
+	res, err := agent.Answer(context.Background(), "Test question")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res.Knowledge == "" {
+		t.Fatal("expected non-empty Knowledge in result")
+	}
+	if res.Knowledge != "synthesized knowledge about the topic" {
+		t.Fatalf("unexpected Knowledge: %q", res.Knowledge)
+	}
+}
+
+func TestPriorKnowledge(t *testing.T) {
+	// The planner sees non-empty knowledge and decides to answer immediately.
+	llm := &scriptedLLM{
+		planner: []string{"Action: Answer"},
+		final:   []string{"follow-up answer using prior knowledge"},
+	}
+
+	searcher := fakeSearch{results: []SearchResult{{Title: "t", URL: "u", Snippet: "s"}}}
+
+	agent := New(
+		WithPlannerModel(llm),
+		WithSynthesizerModel(llm),
+		WithSearchProvider(searcher),
+		WithMaxIterations(3),
+	)
+
+	res, err := agent.Answer(context.Background(), "Follow-up question",
+		WithKnowledge("previously collected knowledge"),
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res.Answer == "" {
+		t.Fatal("expected non-empty answer")
+	}
+	// Knowledge should contain the prior knowledge (possibly updated)
+	if res.Knowledge == "" {
+		t.Fatal("expected Knowledge to be preserved in result")
+	}
+}
+
+func TestPriorKnowledgeCleared(t *testing.T) {
+	// Verify that prior knowledge from one call does not leak into the next.
+	llm := &scriptedLLM{
+		planner: []string{
+			"Action: Answer",          // first call (with prior knowledge)
+			"Action: Search\nQuery: q", // second call (without)
+			"Action: Answer",
+		},
+		synth: []string{"new knowledge"},
+		final: []string{"answer1", "answer2"},
+	}
+
+	searcher := fakeSearch{results: []SearchResult{{Title: "t", URL: "u", Snippet: "s"}}}
+
+	agent := New(
+		WithPlannerModel(llm),
+		WithSynthesizerModel(llm),
+		WithSearchProvider(searcher),
+		WithMaxIterations(3),
+	)
+
+	// First call with prior knowledge — planner sees non-empty knowledge, answers.
+	res1, err := agent.Answer(context.Background(), "Q1",
+		WithKnowledge("prior stuff"),
+	)
+	if err != nil {
+		t.Fatalf("call 1: unexpected error: %v", err)
+	}
+	if res1.Knowledge != "prior stuff" {
+		t.Fatalf("call 1: expected prior knowledge preserved, got %q", res1.Knowledge)
+	}
+
+	// Second call without prior knowledge — agent must search.
+	res2, err := agent.Answer(context.Background(), "Q2")
+	if err != nil {
+		t.Fatalf("call 2: unexpected error: %v", err)
+	}
+	if res2.Knowledge != "new knowledge" {
+		t.Fatalf("call 2: expected fresh knowledge, got %q", res2.Knowledge)
+	}
+}

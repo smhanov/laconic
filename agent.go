@@ -21,6 +21,7 @@ type Agent struct {
 	strategyFactories map[string]StrategyFactory
 	graphReaderConfig GraphReaderConfig
 	searchCost        float64
+	priorKnowledge    string // set per-call via AnswerOption
 }
 
 // New constructs an Agent with optional configuration.
@@ -43,7 +44,16 @@ func New(opts ...Option) *Agent {
 }
 
 // Answer runs the loop until an answer is produced or the limit is reached.
-func (a *Agent) Answer(ctx context.Context, question string) (Result, error) {
+// Optional AnswerOption values can supply prior knowledge for follow-up
+// questions (see WithKnowledge).
+func (a *Agent) Answer(ctx context.Context, question string, opts ...AnswerOption) (Result, error) {
+	var cfg answerConfig
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+	a.priorKnowledge = cfg.priorKnowledge
+	defer func() { a.priorKnowledge = "" }()
+
 	strategy, err := a.resolveStrategy()
 	if err != nil {
 		return Result{}, err

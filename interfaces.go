@@ -35,6 +35,22 @@ type LLMProvider interface {
 // Result is returned by Agent.Answer and carries the final answer text
 // together with the total cost accumulated during the research loop.
 type Result struct {
-	Answer string
-	Cost   float64
+	Answer    string
+	Cost      float64
+	Knowledge string // collected knowledge from the research session
+}
+
+// AnswerOption configures a single call to Agent.Answer.
+type AnswerOption func(*answerConfig)
+
+type answerConfig struct {
+	priorKnowledge string
+}
+
+// WithKnowledge supplies prior knowledge collected from a previous research
+// session. This is typically the Knowledge field from a prior Result.
+// Strategies use it to pre-populate their internal state so the agent can
+// answer follow-up questions without re-searching for already-known facts.
+func WithKnowledge(knowledge string) AnswerOption {
+	return func(c *answerConfig) { c.priorKnowledge = knowledge }
 }
