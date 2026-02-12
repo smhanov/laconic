@@ -9,10 +9,18 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/smhanov/laconic"
 )
+
+// ddgRateLimit enforces a global rate limit of 1 query per second across all
+// DuckDuckGo instances and goroutines.
+var ddgRateLimit struct {
+	mu   sync.Mutex
+	last time.Time
+}
 
 // DuckDuckGo implements a searcher using DuckDuckGo's HTML lite interface.
 type DuckDuckGo struct {
@@ -35,6 +43,20 @@ func (d *DuckDuckGo) Search(ctx context.Context, query string) ([]laconic.Search
 	if strings.TrimSpace(query) == "" {
 		return nil, errors.New("query is empty")
 	}
+
+	// Enforce global 1 QPS rate limit.
+	ddgRateLimit.mu.Lock()
+	if wait := time.Until(ddgRateLimit.last.Add(time.Second)); wait > 0 {
+		ddgRateLimit.mu.Unlock()
+		select {
+		case <-time.After(wait):
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+		ddgRateLimit.mu.Lock()
+	}
+	ddgRateLimit.last = time.Now()
+	ddgRateLimit.mu.Unlock()
 
 	// Use the lite HTML version which is more stable for scraping
 	endpoint := "https://lite.duckduckgo.com/lite/"
