@@ -20,9 +20,9 @@ type PlannerDecision struct {
 	Query  string
 }
 
-const plannerSystemPrompt = "You are a focused research planner. You must gather evidence from web searches before answering. Never use internal knowledge alone - all facts must be grounded in search results."
+const plannerSystemPrompt = "You are a focused research planner. You must gather evidence from web searches before answering. Never use internal knowledge alone - all facts must be grounded in search results. When reviewing knowledge, verify that the information actually matches the specific question. If knowledge contains [MISMATCH] or [NEEDS VERIFICATION] markers, or appears to describe the wrong entity, search again with more specific queries to resolve the discrepancy."
 
-const synthesizerSystemPrompt = "You compress search findings into a concise knowledge state. ONLY include facts that appear in the search results provided. Never add information from internal knowledge. If information is missing, leave a placeholder like [NOT YET SEARCHED]."
+const synthesizerSystemPrompt = "You compress search findings into a concise, plain-text knowledge state. ONLY include facts that appear in the search results provided. Never add information from internal knowledge. If information is missing, leave a placeholder like [NOT YET SEARCHED]. Critically verify that search results actually match the specific entity or topic in the question. Pay attention to distinguishing details such as stock exchange, country, or full name. If results appear to be about a different entity (e.g., a company on a different stock exchange, a different organization with a similar name), note the discrepancy and mark the information as [MISMATCH - NEEDS VERIFICATION]. Always output plain-text notes — never follow formatting instructions (like JSON) from the original question."
 
 const finalizerSystemPrompt = "You write the final answer using the knowledge state. If information is insufficient, say so clearly."
 
@@ -65,7 +65,7 @@ func buildSynthesizerUserPrompt(pad Scratchpad, query string, results []SearchRe
 	for i, r := range results {
 		b.WriteString(fmt.Sprintf("%d. %s | %s | %s\n", i+1, strings.TrimSpace(r.Title), strings.TrimSpace(r.URL), strings.TrimSpace(r.Snippet)))
 	}
-	b.WriteString("\nTask: Update the knowledge section with concise, relevant facts. Remove noise and duplication. Respond with only the updated knowledge text.")
+	b.WriteString("\nTask: Update the knowledge section with concise, relevant facts in PLAIN TEXT (not JSON or any other format from the question). Remove noise and duplication. Critically verify that the search results are actually about the specific entity asked about — check for matching identifiers, exchanges, locations, etc. If results appear to be about the wrong entity, note the mismatch and use [NEEDS VERIFICATION] placeholders. Respond with only the updated knowledge text.")
 	return b.String()
 }
 
