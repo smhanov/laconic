@@ -75,28 +75,29 @@ go run .
 
 ### CLI Demo
 
-A fully functional CLI tool is available in `examples/research/`. It supports both Ollama (native API) and OpenAI-compatible backends, multiple search providers, and both strategies.
+A fully functional CLI tool is available in `examples/research/`. It uses `llmhub` for provider-agnostic LLM access (OpenAI/Ollama/Anthropic/Gemini), supports multiple search providers, and supports both strategies.
 
 ```bash
 # Create a prompt file
 echo "Why is the sky blue?" > question.txt
 
-# Run with your local Ollama instance using the native API (default)
+# Run with your local Ollama instance (default)
 go run ./examples/research/ -model mistral -prompt question.txt
 
 # Point to a remote Ollama endpoint
-go run ./examples/research/ -model llama3 -endpoint ollama.example.com -prompt question.txt
+go run ./examples/research/ -provider ollama -model llama3 -endpoint https://ollama.example.com -prompt question.txt
 
-# Use an Ollama server via its OpenAI-compatible endpoint
+# Use an OpenAI-compatible endpoint (vLLM/Ollama/LocalAI/etc.)
 go run ./examples/research/ \
-    -backend openai \
-    -endpoint https://ollama.example.com \
-    -model llama3 \
+    -provider openai \
+    -api-key none \
+    -endpoint https://vllm.example.com/v1 \
+    -model default \
     -prompt question.txt
 
 # Use the real OpenAI API
 go run ./examples/research/ \
-    -backend openai \
+    -provider openai \
     -api-key $OPENAI_API_KEY \
     -model gpt-4o \
     -prompt question.txt
@@ -151,9 +152,10 @@ without editing the file each time.
 
 | Flag               | Default      | Description                                                                                   |
 | ------------------ | ------------ | --------------------------------------------------------------------------------------------- |
-| `-backend`         | `ollama`     | LLM backend: `ollama` (native API) or `openai` (chat completions)                             |
+| `-provider`        | `ollama`     | LLM provider for `llmhub` (`ollama`, `openai`, `anthropic`, `gemini`)                         |
+| `-backend`         |              | Alias for `-provider` (deprecated)                                                             |
 | `-model`           | _(required)_ | Model name                                                                                    |
-| `-endpoint`        | varies       | API endpoint URL (default: `localhost:11434` for ollama, `https://api.openai.com` for openai) |
+| `-endpoint`        |              | Optional provider endpoint/base URL override                                                   |
 | `-api-key`         |              | API key for authenticated endpoints (e.g. OpenAI)                                             |
 | `-prompt`          | _(required)_ | Path to a text file containing the question                                                   |
 | `-strategy`        | `scratchpad` | Strategy: `scratchpad` or `graph-reader`                                                      |
