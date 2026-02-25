@@ -93,6 +93,27 @@ func StripThinkBlocks(s string) string {
 	return strings.TrimSpace(thinkRegex.ReplaceAllString(s, ""))
 }
 
+// getContent extracts usable text from an LLM response. It strips <think>
+// blocks from Text first. If Text is empty (e.g. thinking models that put
+// everything in reasoning tokens), falls back to the Reasoning field.
+func getContent(resp LLMResponse, debug bool, label string) string {
+	text := StripThinkBlocks(resp.Text)
+	if strings.TrimSpace(text) != "" {
+		return text
+	}
+	if strings.TrimSpace(resp.Reasoning) != "" {
+		if debug {
+			r := resp.Reasoning
+			if len(r) > 500 {
+				r = r[:500] + "..."
+			}
+			fmt.Printf("[LACONIC DEBUG] %s: Text empty, using reasoning (%d chars)\n", label, len(resp.Reasoning))
+		}
+		return StripThinkBlocks(resp.Reasoning)
+	}
+	return ""
+}
+
 // parsePlannerDecision attempts to read the planner output.
 func parsePlannerDecision(raw string) (PlannerDecision, error) {
 	trimmed := strings.TrimSpace(raw)

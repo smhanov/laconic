@@ -26,6 +26,7 @@ type Notebook struct {
 // RationalPlan defines the strategy.
 type RationalPlan struct {
 	OriginalQuestion string   `json:"original_question"`
+	ResearchGoal     string   `json:"research_goal"`
 	Strategy         []string `json:"strategy"`
 	KeyElements      []string `json:"key_elements"`
 }

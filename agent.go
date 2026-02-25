@@ -95,8 +95,8 @@ func (a *Agent) plan(ctx context.Context, pad Scratchpad) (PlannerDecision, floa
 	if a.debug {
 		fmt.Printf("[LACONIC DEBUG] Planner Response:\n%s\n", resp.Text)
 	}
-	// Strip <think> blocks from models like qwen3
-	raw := StripThinkBlocks(resp.Text)
+	// Strip <think> blocks from models like qwen3; fall back to reasoning if text is empty.
+	raw := getContent(resp, a.debug, "Planner")
 	decision, err := parsePlannerDecision(raw)
 	return decision, resp.Cost, err
 }
@@ -115,8 +115,8 @@ func (a *Agent) synthesize(ctx context.Context, pad *Scratchpad, query string, r
 	if a.debug {
 		fmt.Printf("[LACONIC DEBUG] Synthesizer Response:\n%s\n", resp.Text)
 	}
-	// Strip <think> blocks from models like qwen3
-	pad.Knowledge = StripThinkBlocks(resp.Text)
+	// Strip <think> blocks from models like qwen3; fall back to reasoning if text is empty.
+	pad.Knowledge = getContent(resp, a.debug, "Synthesizer")
 	pad.CurrentStep = fmt.Sprintf("Last query: %s", query)
 	return resp.Cost, nil
 }
@@ -138,6 +138,6 @@ func (a *Agent) finalize(ctx context.Context, pad Scratchpad) (string, float64, 
 	if a.debug {
 		fmt.Printf("[LACONIC DEBUG] Finalizer Response:\n%s\n", resp.Text)
 	}
-	// Strip <think> blocks from models like qwen3
-	return StripThinkBlocks(resp.Text), resp.Cost, nil
+	// Strip <think> blocks from models like qwen3; fall back to reasoning if text is empty.
+	return getContent(resp, a.debug, "Finalizer"), resp.Cost, nil
 }

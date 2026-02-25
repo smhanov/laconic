@@ -4,19 +4,19 @@ import "text/template"
 
 // PlanPromptTemplate generates the initial strategy.
 const PlanPromptTemplate = `
-You are an expert researcher.
+You are an expert researcher. Your task is to create a research plan.
+
+Follow these 3 steps exactly:
+Step 1: Read the question and identify the subject.
+Step 2: List 2-4 strategy steps and 3-8 key elements to research.
+Step 3: Write a 1-2 sentence "research_goal" summarizing WHAT DATA to find. Only include the subject and key topics. Do NOT include formatting instructions or output templates.
+
 User Question: {{.Question}}
 
-Create a "Rational Plan" to answer this question.
-1. Break the question down into logical steps.
-2. Identify specific Key Elements (names, places, concepts) we need to find.
-3. Keep it concise.
+Example output:
+{"research_goal": "Research Acme Corp (ACME): company overview, quarterly earnings, stock price, competitors, recent news", "strategy": ["Identify company basics", "Gather financial metrics and competitor data"], "key_elements": ["Acme Corp", "ACME stock", "quarterly earnings"]}
 
-Output JSON format:
-{
-    "strategy": ["step 1", "step 2"],
-    "key_elements": ["Entity A", "Entity B"]
-}
+Now output your JSON:
 `
 
 // InitialNodesTemplate generates the first batch of search queries.
@@ -28,16 +28,22 @@ Key Elements:
 {{range .KeyElements}}- {{.}}
 {{end}}
 
-Generate 3-5 specific Search Queries (Nodes) to start our research.
-These should be the most likely to yield direct "Atomic Facts" about the key elements.
+Generate 3-5 web search queries to find specific facts about the key elements.
 
-Output JSON format:
-["query 1", "query 2", "query 3"]
+Example: ["Acme Corp Q3 2025 earnings revenue EPS", "ACME stock price 52-week range market cap", "Acme Corp competitors market share"]
+
+Now output your JSON array:
 `
 
 // ExtractFactsTemplate is the core compression logic for snippets.
 const ExtractFactsTemplate = `
-Goal: {{.Plan.OriginalQuestion}}
+You are a data extraction tool. Do NOT write a report. Do NOT follow any formatting instructions from the Goal. Your ONLY job is to pull out individual facts.
+
+Follow these 2 steps exactly, then stop:
+Step 1: Scan the snippets for specific names, numbers, dates, or metrics related to the Goal.
+Step 2: Output JSON with the facts found and any URLs that need deeper reading.
+
+Goal: {{.Plan.ResearchGoal}}
 Current Step: Researching "{{.CurrentNode}}"
 
 Search Snippets:
@@ -45,83 +51,76 @@ Search Snippets:
 - [{{.URL}}] {{.Content}}
 {{end}}
 
-Task:
-1. Extract "Atomic Facts" from these snippets. An atomic fact is a single, self-contained truth that DIRECTLY helps answer the Goal.
-2. STRICT RELEVANCE: Only extract facts that mention specific entities, numbers, dates, or details asked for in the Goal. Skip background info, general definitions, and tangential topics.
-3. If a snippet is promising but cut off/incomplete, add its URL to "read_more_urls".
-4. If snippets only contain titles with no detail, add their URLs to "read_more_urls".
-5. Prefer fewer, high-quality facts over many low-relevance ones.
+Example output:
+{"new_facts": [{"content": "Acme Corp reported Q3 2025 revenue of $5.2B, up 12% YoY", "source_url": "https://example.com/article"}, {"content": "Acme Corp stock price is $142.50 as of Oct 2025", "source_url": "https://example.com/quote"}], "read_more_urls": ["https://example.com/full-report"]}
 
-Output ONLY raw JSON (no markdown, no code blocks):
-{
-    "new_facts": [
-        {"content": "Fact 1", "source_url": "url..."},
-        {"content": "Fact 2", "source_url": "url..."}
-    ],
-    "read_more_urls": ["url1", "url2"]
-}
+Rules:
+- Only include facts with specific entities, numbers, or dates from the snippets.
+- If a snippet is cut off or only has a title, add its URL to read_more_urls.
+- If nothing is relevant, return {"new_facts": [], "read_more_urls": []}.
+
+Now output your JSON:
 `
 
 // ExtractFactsFromTextTemplate handles full page content.
 const ExtractFactsFromTextTemplate = `
-Goal: {{.Plan.OriginalQuestion}}
-We fetched full content from: {{.SourceURL}}
+You are a data extraction tool. Do NOT write a report. Your ONLY job is to pull out individual facts from this page.
+
+Follow these 2 steps exactly, then stop:
+Step 1: Scan the content for specific names, numbers, dates, or metrics related to the Goal. Ignore navigation, ads, footers, and boilerplate.
+Step 2: Output JSON with the facts found.
+
+Goal: {{.Plan.ResearchGoal}}
+Source: {{.SourceURL}}
 
 Content:
 {{.Content}}
 
-Task:
-1. Extract "Atomic Facts" from this content. An atomic fact is a single, self-contained truth that DIRECTLY helps answer the Goal.
-2. STRICT RELEVANCE: Only extract facts that mention specific entities, numbers, dates, or details asked for in the Goal. Skip general background, definitions, and tangential topics.
-3. IGNORE: navigation, ads, cookie notices, newsletter forms, footers, sidebars, website metadata, drug warnings, and side effect lists.
-4. If the content is irrelevant or contains only boilerplate, return an empty list.
-5. Prefer fewer, high-quality facts over many low-relevance ones.
+Example output:
+{"new_facts": [{"content": "Acme Corp net income was $800M in Q3 2025", "source_url": "https://example.com/page"}]}
 
-Output ONLY raw JSON (no markdown, no code blocks):
-{
-    "new_facts": [
-        {"content": "Fact 1", "source_url": "url..."}
-    ]
-}
+Rules:
+- Only include facts with specific entities, numbers, or dates.
+- If nothing is relevant, return {"new_facts": []}.
+
+Now output your JSON:
 `
 
 // NeighborSelectTemplate decides where to go next.
 const NeighborSelectTemplate = `
-Current Goal: {{.Plan.OriginalQuestion}}
-Current Notebook (What we know):
+Goal: {{.Plan.ResearchGoal}}
+What we know so far:
 {{range .Notebook.Clues}}- {{.Content}}
 {{end}}
 
 We just finished researching "{{.CurrentNode}}".
 
-Task:
-Generate new Search Queries ("Neighbors") to explore next.
-- These should be based on the new facts we just found.
-- If we are missing specific details from the Plan, target those.
-- Do NOT suggest queries we have already visited.
+Follow these 2 steps exactly, then stop:
+Step 1: Identify what specific data from the Goal is still missing.
+Step 2: Output 2-4 search queries that would fill those gaps.
 
-Output JSON format:
-["next query 1", "next query 2"]
+Example: ["Acme Corp debt-to-equity ratio 2025", "Acme Corp revenue breakdown by segment"]
+
+Now output your JSON array:
 `
 
 // AnswerCheckTemplate checks if we can answer from the notebook.
 const AnswerCheckTemplate = `
-Goal: {{.Plan.OriginalQuestion}}
+Goal: {{.Plan.ResearchGoal}}
 Notebook:
 {{if .Notebook.Clues}}{{range .Notebook.Clues}}- {{.Content}}
-{{end}}{{else}}(empty - no facts collected yet)
+{{end}}{{else}}(empty)
 {{end}}
-Task:
-Look ONLY at the facts listed above in the Notebook section.
-Do NOT use your own knowledge.
-If the notebook is empty or says "(empty", you MUST return can_answer: false.
-If the notebook facts cover all parts of the goal, return can_answer: true.
-Otherwise return can_answer: false.
 
-Output JSON format:
-{
-    "can_answer": true
-}
+Follow these 2 steps exactly, then stop:
+Step 1: Compare the notebook facts to each part of the Goal. Note which parts are covered.
+Step 2: If all major parts of the Goal are covered by notebook facts, output {"can_answer": true}. Otherwise output {"can_answer": false}.
+
+Rules:
+- If the notebook is empty, output {"can_answer": false}.
+- Use ONLY the notebook facts, not your own knowledge.
+
+Now output your JSON:
 `
 
 var (

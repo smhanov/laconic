@@ -23,8 +23,9 @@ type FetchProvider interface {
 // LLMResponse is returned by LLMProvider.Generate and carries both the
 // generated text and the cost (in dollars) of the call.
 type LLMResponse struct {
-	Text string
-	Cost float64
+	Text      string
+	Cost      float64
+	Reasoning string // optional: model reasoning/thinking content, kept separate from Text
 }
 
 // LLMProvider is implemented by user-supplied language model clients.
