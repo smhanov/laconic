@@ -20,7 +20,7 @@ The agent found all three laureates, their exact affiliations, and their distinc
 
 - Two built-in research strategies: **Scratchpad** (iterative search loop) and **Graph Reader** (graph-based web exploration).
 - Model-agnostic: bring your own `LLMProvider` adapter (OpenAI, Ollama, Anthropic, etc.). Suggestion: use [llmhub](https://github.com/smhanov/llmhub) to easily integrate with any model.
-- Swappable search providers (DuckDuckGo, Brave, Tavily) + custom `SearchProvider` interface.
+- Swappable search providers (DuckDuckGo, Brave, Serper, Tavily) + custom `SearchProvider` interface.
 - Optional `FetchProvider` for reading full web pages (used by Graph Reader).
 - Dual-model support: use a stronger planner and a cheaper synthesizer/finalizer to save cost.
 - **Cost tracking**: accumulate LLM and search costs automatically; `Result.Cost` reports total spend.
@@ -111,6 +111,13 @@ go run ./examples/research/ \
     -search brave \
     -brave-key YOUR_API_KEY
 
+# Use Serper search
+go run ./examples/research/ \
+    -model llama3 \
+    -prompt question.txt \
+    -search serper \
+    -serper-key YOUR_API_KEY
+
 # Enable debug logging to see all LLM prompts and responses
 go run ./examples/research/ -model mistral -prompt question.txt -debug
 
@@ -161,8 +168,9 @@ without editing the file each time.
 | `-strategy`        | `scratchpad` | Strategy: `scratchpad` or `graph-reader`                                                      |
 | `-max-iterations`  | `5`          | Maximum search iterations (scratchpad)                                                        |
 | `-graph-max-steps` | `8`          | Maximum exploration steps (graph-reader)                                                      |
-| `-search`          | `duckduckgo` | Search provider: `duckduckgo` or `brave`                                                      |
+| `-search`          | `duckduckgo` | Search provider: `duckduckgo`, `brave`, or `serper`                                           |
 | `-brave-key`       |              | Brave Search API key (required with `-search brave`)                                          |
+| `-serper-key`      |              | Serper API key (required with `-search serper`)                                                |
 | `-debug`           | `false`      | Print all LLM prompts and responses                                                           |
 | `-knowledge`       |              | Path to a file for reading/writing collected knowledge (enables follow-up questions)            |
 | `-var`             |              | Set a template variable: `-var KEY=VALUE` (repeatable). Replaces `{{KEY}}` in the prompt file |
@@ -381,11 +389,13 @@ These options are passed to individual `Answer` calls rather than to `New`:
 | ---------- | ---------------------------- | ------------------------------------------- |
 | DuckDuckGo | No                           | Free; scrapes the lite HTML interface       |
 | Brave      | Yes (`X-Subscription-Token`) | Fast, structured JSON API                   |
+| Serper     | Yes (`X-API-KEY`)            | Google Search results as structured JSON    |
 | Tavily     | Yes                          | Supports `basic` and `advanced` depth modes |
 
 ```go
 search.NewDuckDuckGo()
 search.NewBrave("your-api-key")
+search.NewSerper("your-api-key")
 search.NewTavily("your-api-key", "advanced")
 ```
 

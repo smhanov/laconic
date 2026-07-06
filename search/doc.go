@@ -4,6 +4,7 @@
 //
 //   - DuckDuckGo: Free, no API key required (uses HTML scraping of lite.duckduckgo.com)
 //   - Brave: Requires API key via X-Subscription-Token header
+//   - Serper: Requires API key via X-API-KEY header
 //   - Tavily: Requires API key, supports basic/advanced depth modes
 //
 // # DuckDuckGo Example
@@ -15,6 +16,11 @@
 //
 //	provider := search.NewBrave("your-api-key")
 //	results, err := provider.Search(ctx, "best practices for API design")
+//
+// # Serper Example
+//
+//	provider := search.NewSerper("your-api-key")
+//	results, err := provider.Search(ctx, "recent Go releases")
 //
 // # Tavily Example
 //

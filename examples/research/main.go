@@ -86,8 +86,9 @@ func main() {
 	maxIterations := flag.Int("max-iterations", 5, "Maximum search iterations")
 	strategy := flag.String("strategy", "scratchpad", "Strategy to use: scratchpad or graph-reader")
 	graphSteps := flag.Int("graph-max-steps", 8, "Maximum steps for graph-reader strategy")
-	searchProvider := flag.String("search", "duckduckgo", "Search provider: duckduckgo or brave")
+	searchProvider := flag.String("search", "duckduckgo", "Search provider: duckduckgo, brave, or serper")
 	braveKey := flag.String("brave-key", "", "Brave Search API key (required when -search=brave)")
+	serperKey := flag.String("serper-key", "", "Serper API key (required when -search=serper)")
 	knowledgeFile := flag.String("knowledge", "", "Path to a file for reading/writing collected knowledge (enables follow-up questions)")
 	debug := flag.Bool("debug", false, "Print full LLM prompts and responses")
 	vars := make(varMap)
@@ -150,6 +151,11 @@ func main() {
 			log.Fatal("Error: -brave-key is required when using brave search")
 		}
 		searcher = search.NewBrave(*braveKey)
+	case "serper":
+		if *serperKey == "" {
+			log.Fatal("Error: -serper-key is required when using serper search")
+		}
+		searcher = search.NewSerper(*serperKey)
 	default:
 		searcher = search.NewDuckDuckGo()
 	}
